@@ -466,22 +466,29 @@ function setChip(state) {
 
 const updates = initUpdates(setChip);
 
-/* Long-press the version chip for the layout numbers. */
+/* Long-press anywhere in the header for the layout numbers. The whole bar is
+   the target rather than just the chip, since a small chip is easy to miss. */
 let holdTimer = null;
 let heldOpen = false;
+const topbarEl = document.querySelector('.topbar');
 
-versionChip.addEventListener('pointerdown', () => {
+topbarEl.addEventListener('pointerdown', (event) => {
+  if (event.target.closest('#soundToggle')) return;
   heldOpen = false;
+  clearTimeout(holdTimer);
   holdTimer = setTimeout(() => {
     heldOpen = true;
     diagEl.hidden = !diagEl.hidden;
     if (!diagEl.hidden) diagEl.textContent = layoutReport();
     tap();
-  }, 600);
+  }, 500);
 });
 
-for (const event of ['pointerup', 'pointercancel', 'pointerleave']) {
-  versionChip.addEventListener(event, () => clearTimeout(holdTimer));
+/* Only a lifted finger or an abandoned gesture ends the press. Watching
+   pointerleave as well would cancel on the slightest drift off the target,
+   which on a touch screen is most presses. */
+for (const event of ['pointerup', 'pointercancel']) {
+  window.addEventListener(event, () => clearTimeout(holdTimer));
 }
 
 versionChip.addEventListener('click', () => {
