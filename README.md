@@ -9,10 +9,13 @@ full screen and offline, like a native app.
 
 - Write out a whole expression before evaluating it. Pressing an operator adds
   to the expression instead of calculating, and nothing is computed until `=`
+- A running history: finished calculations stack above the display, newest
+  nearest your thumb. Tap one to reuse its result, star one to keep it
 - Proper order of operations: `2 + 3 × 4` is 14, not 20
 - Parentheses, nested as deep as you like, from a single `( )` key that opens or
   closes depending on where you are
-- A live preview of the result under the expression as you type
+- The result reads large with the expression beneath it, the same shape as the
+  history rows, and it updates live as you type
 - The usual four operations, plus `%`, `±`, and a decimal point
 - One bottom-left key that deletes while there is something to delete and
   clears everything otherwise; swiping across the display also deletes
@@ -31,7 +34,7 @@ No build step and no dependencies — it is plain HTML, CSS, and ES modules.
 ```sh
 npm start          # serves the app at http://localhost:8080
 npm test           # runs the test suite
-npm run set-version 2.2.0   # bumps the version everywhere it appears
+npm run set-version 3.1.0   # bumps the version everywhere it appears
 ```
 
 Opening `index.html` directly from the filesystem will not work: ES modules and
@@ -155,12 +158,54 @@ A few behaviours that are easy to get wrong, and are pinned by tests:
   fraction, so `80 × 50%` is 40.
 - **`±` inserts a sign token** rather than editing digits, so `12 + −5` parses
   through the same path as a minus you typed.
-- **The bottom-left key is backspace or AC depending on state.** It deletes
+- **The bottom-left key is backspace or C depending on state.** It deletes
   while an expression is being typed, and clears when there is nothing to
   delete. A committed result and an error both read as AC, since neither is
   editable a character at a time. The physical Backspace key always deletes.
 - **Juxtaposition means multiplication.** The keypad inserts a visible `×` when
   you type `2(`, and the parser accepts the bare form too.
+
+## The keypad
+
+The arrangement follows Calcbot's: a function row on top, the operators down
+the right, a `+` that runs the height of two rows, `C` bottom-left and an `=`
+that runs the width of two columns.
+
+```
+±    (    )    ☆
+7    8    9    ÷
+4    5    6    ×
+1    2    3    −
+0    .    %    +
+C         =         (+ continues)
+```
+
+Keys are flush with hairline seams rather than separate rounded tiles, which is
+what makes the two-row `+` and two-column `=` read as one block. Because flush
+keys cannot scale on press without breaking the seams, a press shows as a
+colour change instead of the previous nudge.
+
+The colours stay Calcutron's rather than Calcbot's — orange operators, teal `=`,
+red `C` — so only the arrangement is borrowed.
+
+## History
+
+Every completed calculation becomes a row above the display, newest at the
+bottom, showing the result with the expression beneath it. Operators are drawn
+as small chips so a long expression stays scannable.
+
+- **Tap a row** to drop its result into whatever you are typing. Landing on a
+  closed group or another number inserts a `×` first.
+- **Star a row** — from the row itself or the `☆` key, which acts on the most
+  recent calculation.
+- **Clear** removes everything unstarred. Starred rows stay, which is the point
+  of starring; unstar one first if it should go.
+- Rows persist in `localStorage` and survive a relaunch. The list holds 100;
+  past that the oldest unstarred rows fall away, and starred ones never do.
+
+`js/history.js` takes its storage as a constructor argument rather than
+reaching for `localStorage` directly, which is what lets the tests drive it in
+Node with a fake.
 
 ## Layout
 
@@ -169,6 +214,7 @@ index.html                app shell and keypad markup
 version.js                the version, read by both the page and the worker
 css/styles.css            all styling, including the landscape and safe-area handling
 js/calculator.js          the engine — tokens, parser, evaluator; no DOM
+js/history.js             the calculation history and its storage
 js/app.js                 wires the engine to the keypad, keyboard, and display
 js/feedback.js            synthesized key sounds (Web Audio, no audio files)
 js/haptics.js             press haptics, where the platform provides them
@@ -195,5 +241,8 @@ reference to the DOM, which is what makes it straightforward to test.
 - **The main display line scrolls rather than shrinking forever.** Its size
   buckets in `js/app.js` are tuned so a full-length *result* still fits the
   narrowest phone; expressions longer than that scroll to follow the caret.
+- **Park a short history list with `margin-top: auto`, not `justify-content`.**
+  Flex end-alignment pushes overflow out of the top of a scroll container,
+  where it cannot be scrolled back to.
 - **Icons** are generated from `icons/calcutron.svg`. If the artwork changes,
   re-export the PNGs at 32, 180, 192, and 512 px, plus the maskable 512 variant.

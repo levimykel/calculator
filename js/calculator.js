@@ -198,7 +198,8 @@ export class Calculator {
 
   reset() {
     this.tokens = [];
-    this.committed = null;   // the expression text that produced a result
+    this.committed = null;        // the expression text that produced a result
+    this.committedTokens = null;  // and its tokens, for the history to render
     this.errored = false;
   }
 
@@ -221,6 +222,7 @@ export class Calculator {
       tokens: this.tokens,
       expression: formatTokens(this.tokens),
       committed: this.committed,
+      committedTokens: this.committedTokens,
       preview: preview === null || Number.isNaN(preview) ? null : preview,
       errored: this.errored,
       isEmpty: this.tokens.length === 0,
@@ -232,6 +234,7 @@ export class Calculator {
   continueFromResult(keepResult) {
     if (this.committed === null) return;
     this.committed = null;
+    this.committedTokens = null;
     if (!keepResult) this.tokens = [];
   }
 
@@ -368,7 +371,7 @@ export class Calculator {
     if (this.committed !== null) return this; // Already a result; nothing to redo.
     if (!this.tokens.length) return this;
 
-    const expression = formatTokens(normalize(this.tokens));
+    const evaluated = normalize(this.tokens);
     const result = valueOf(this.tokens);
 
     if (result === null) return this;
@@ -379,7 +382,9 @@ export class Calculator {
     }
 
     this.tokens = [{ type: 'number', text: String(result) }];
-    this.committed = expression;
+    this.committed = formatTokens(evaluated);
+    // Kept separate from `tokens`, which now holds only the result.
+    this.committedTokens = evaluated;
     return this;
   }
 
@@ -401,6 +406,19 @@ export class Calculator {
 
     this.tokens.pop();
     return this;
+  }
+
+  /** Put a value from elsewhere — a history row — into the expression. */
+  insertValue(value) {
+    if (this.errored) this.reset();
+    this.continueFromResult(false);
+
+    const last = this.last;
+    if (last?.type === 'number') return this; // A number is already being typed.
+    if (last?.type === 'close' || last?.type === 'percent') {
+      this.push({ type: 'operator', op: 'multiply' });
+    }
+    return this.push({ type: 'number', text: String(value) });
   }
 
   clearAll() {
@@ -428,32 +446,34 @@ function isUnaryAt(tokens, index) {
   return before.type === 'operator' || before.type === 'open';
 }
 
-export function formatTokens(tokens) {
-  let out = '';
-  tokens.forEach((token, index) => {
+/**
+ * The expression broken into displayable pieces. The UI uses this to draw
+ * each operator as its own chip; formatTokens() joins the same pieces into
+ * plain text.
+ */
+export function tokenParts(tokens) {
+  return tokens.map((token, index) => {
     switch (token.type) {
       case 'number':
-        out += formatNumber(token.text);
-        break;
+        return { kind: 'number', text: formatNumber(token.text) };
       case 'operator':
-        out += isUnaryAt(tokens, index)
-          ? OPERATORS[token.op]
-          : ` ${OPERATORS[token.op]} `;
-        break;
+        return { kind: 'operator', text: OPERATORS[token.op], unary: isUnaryAt(tokens, index) };
       case 'open':
-        out += '(';
-        break;
+        return { kind: 'paren', text: '(' };
       case 'close':
-        out += ')';
-        break;
+        return { kind: 'paren', text: ')' };
       case 'percent':
-        out += '%';
-        break;
+        return { kind: 'percent', text: '%' };
       default:
-        break;
+        return { kind: 'other', text: '' };
     }
   });
-  return out;
+}
+
+export function formatTokens(tokens) {
+  return tokenParts(tokens)
+    .map((part) => (part.kind === 'operator' && !part.unary ? ` ${part.text} ` : part.text))
+    .join('');
 }
 
 /** Render one number: grouped, sane length, sane exponents. */

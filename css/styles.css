@@ -4,8 +4,11 @@
   --panel: #161d33;
   --key: #232c4a;
   --key-press: #303b60;
-  --key-fn: #39456e;
-  --key-fn-press: #4a598a;
+  --key-fn: #1b2138;
+  --key-fn-press: #2b3355;
+  --danger: #d8484f;
+  --danger-press: #e8686e;
+  --hairline: rgba(255,255,255,0.07);
   --accent: #ff9f3e;
   --accent-press: #ffb968;
   --eq: #2fd6c4;
@@ -45,7 +48,6 @@ body {
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  justify-content: center;
   gap: var(--gap);
   background: radial-gradient(120% 60% at 50% 0%, var(--bg-top) 0%, var(--bg) 60%);
   padding:
@@ -141,26 +143,165 @@ body {
 
 .chip[data-level="off"] { color: #6b769b; }
 
-.display {
-  /* Grows into the space above the keypad, but capped so tall screens do not
-     turn the display into a field of empty pixels. */
+/* ------------------------------------------------------------- history */
+
+.history {
+  display: flex;
+  flex-direction: column;
+  /* Allowed to collapse to nothing so a short landscape viewport still fits
+     the keypad, which matters more. */
   flex: 1 1 auto;
-  min-height: 96px;
-  max-height: 300px;
+  min-height: 0;
+}
+
+.history__bar {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: flex-end;
+  min-height: 0;
+}
+
+/* Only the rows scroll, so Clear never sits on top of one. */
+.history__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  /* Fade the top edge so a half-scrolled row trails off instead of being
+     sliced through. */
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 28px);
+  mask-image: linear-gradient(to bottom, transparent, #000 28px);
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.history__scroll::-webkit-scrollbar { display: none; }
+
+.history__list {
+  list-style: none;
+  /* An auto top margin parks a short list against the display. Using
+     justify-content for that instead pushes overflow out of the top of the
+     scroll box, where it cannot be scrolled back to. */
+  margin: auto 0 0;
+  padding: 0;
+}
+
+.history__empty {
+  margin: 0;
+  padding: 18px 6px;
+  text-align: center;
+  font-size: 0.85rem;
+  color: #566187;
+}
+
+.history__clear {
+  -webkit-appearance: none;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 4px 8px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.history__clear:active { color: var(--text); }
+
+.entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px 6px 0;
+  border-top: 1px solid var(--hairline);
+}
+
+.entry__star {
+  flex: 0 0 auto;
+  -webkit-appearance: none;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 6px;
+  margin: -6px 0 -6px -2px;
+  color: #3d466a;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  touch-action: manipulation;
+}
+
+.entry__star svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; }
+.entry__star[aria-pressed="true"] { color: var(--accent); }
+.entry__star[aria-pressed="true"] svg { fill: currentColor; }
+
+/* The row itself recalls the result; only the star is a separate target. */
+.entry__recall {
+  flex: 1 1 auto;
+  min-width: 0;
+  -webkit-appearance: none;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  text-align: right;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.entry__recall:active { opacity: 0.55; }
+
+.entry__result {
+  display: block;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.entry__expression {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.8rem;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Operators read as little chips, so an expression stays scannable. */
+.chip-op {
+  display: inline-block;
+  border: 1px solid var(--hairline);
+  border-radius: 5px;
+  padding: 0 4px;
+  margin: 0 3px;
+  line-height: 1.35;
+  color: var(--text);
+}
+
+/* ------------------------------------------------------------- display */
+
+.display {
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  gap: 4px;
-  padding: 14px 16px 16px;
-  background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
-  border: 1px solid rgba(255,255,255,0.07);
-  border-radius: var(--radius);
-  overflow: hidden;
+  gap: 2px;
+  padding: 10px 4px 8px;
 }
 
-/* The expression being typed. It scrolls rather than shrinking without limit,
-   so the end you are typing at stays in view. */
-.expression {
+/* Result large, expression small — the same shape as a history row, so the
+   live calculation and the ones above it read the same way. */
+.result {
   display: block;
   width: 100%;
   text-align: right;
@@ -175,69 +316,96 @@ body {
   user-select: text;
 }
 
-.expression::-webkit-scrollbar { display: none; }
+.result::-webkit-scrollbar { display: none; }
 
-.expression[data-len="md"] { font-size: clamp(2rem, 10vw, 2.9rem); }
-.expression[data-len="sm"] { font-size: clamp(1.6rem, 7.5vw, 2.3rem); }
-.expression[data-len="xs"] { font-size: clamp(1.3rem, 6vw, 1.9rem); }
+.result[data-len="md"] { font-size: clamp(2rem, 10vw, 2.9rem); }
+.result[data-len="sm"] { font-size: clamp(1.6rem, 7.5vw, 2.3rem); }
+.result[data-len="xs"] { font-size: clamp(1.3rem, 6vw, 1.9rem); }
 
-.expression.is-error { color: var(--accent); }
-/* A committed result reads as an answer rather than as more input. */
-.expression.is-result { color: var(--eq); }
+.result.is-error { color: var(--accent); }
 
-.preview {
+.entryline {
   text-align: right;
-  min-height: 26px;
-  font-size: clamp(0.9rem, 3.6vw, 1.15rem);
+  min-height: 24px;
+  font-size: clamp(0.95rem, 4vw, 1.2rem);
   color: var(--muted);
   white-space: nowrap;
   overflow-x: auto;
   scrollbar-width: none;
 }
 
-.preview::-webkit-scrollbar { display: none; }
+.entryline::-webkit-scrollbar { display: none; }
 
+/* One flush block with hairline seams, the way the reference layout reads.
+   The 1px gaps let the container colour through as the seams. */
 .keypad {
   flex: 0 0 auto;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  grid-auto-rows: minmax(48px, 1fr);
-  gap: var(--gap);
-  height: min(58dvh, 480px);
+  grid-template-rows: repeat(6, 1fr);
+  gap: 1px;
+  height: min(56dvh, 440px);
+  background: var(--hairline);
+  border-radius: var(--radius);
+  overflow: hidden;
 }
 
 .key {
   -webkit-appearance: none;
   appearance: none;
   border: 0;
-  border-radius: 18px;
+  border-radius: 0;
   background: var(--key);
   color: var(--text);
   font: inherit;
   font-size: clamp(1.4rem, 6vw, 1.9rem);
   font-weight: 600;
   cursor: pointer;
-  /* Release eases out; the press itself is instant (see below). Anything
-     slower than this reads as the key lagging behind the finger. */
-  transition: background-color 130ms ease-out, transform 130ms ease-out;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+  display: grid;
+  place-items: center;
+  /* Flush keys cannot scale on press without breaking the seams, so the
+     press reads as a colour change instead. Release eases; the press itself
+     is instant. */
+  transition: background-color 140ms ease-out;
   /* No double-tap-zoom or scroll gesture to wait on, so pointerdown can act
      immediately instead of the browser holding the event back. */
   touch-action: none;
 }
 
 .key:active,
-.key.is-pressed {
-  background: var(--key-press);
-  transform: scale(0.96);
-  transition-duration: 0s;
-}
+.key.is-pressed { background: var(--key-press); transition-duration: 0s; }
 
 .key--fn { background: var(--key-fn); font-size: clamp(1.2rem, 5vw, 1.6rem); }
-.key--fn[data-action="paren"] { letter-spacing: -0.06em; }
+.key--fn:active, .key--fn.is-pressed { background: var(--key-fn-press); }
 
-/* The bottom-left key carries both faces; only one is ever shown. */
-.key--clear { display: grid; place-items: center; }
+.key--op { background: var(--accent); color: #24160a; font-size: clamp(1.6rem, 7vw, 2.2rem); }
+.key--op:active, .key--op.is-pressed { background: var(--accent-press); }
+.key--op[aria-pressed="true"] { background: #fff; color: var(--accent); }
+
+.key--eq { background: var(--eq); color: #05231f; }
+.key--eq:active, .key--eq.is-pressed { background: var(--eq-press); }
+
+.key--clear { background: var(--danger); color: #fff; }
+.key--clear:active, .key--clear.is-pressed { background: var(--danger-press); }
+
+/* The plus runs the height of two rows; equals runs the width of two columns. */
+.key--tall { grid-row: span 2; }
+.key--wide { grid-column: span 2; }
+
+.key--star svg {
+  width: 1.35em;
+  height: 1.35em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linejoin: round;
+}
+
+.key--star[data-on="true"] { color: var(--accent); }
+.key--star[data-on="true"] svg { fill: currentColor; }
+.key--star[disabled] { opacity: 0.4; cursor: default; }
+
+/* The clear key carries both faces; only one is ever shown. */
 .key--clear[data-mode="clear"] .key__glyph,
 .key--clear[data-mode="back"] .key__label { display: none; }
 
@@ -250,14 +418,6 @@ body {
   stroke-linejoin: round;
   stroke-linecap: round;
 }
-.key--fn:active, .key--fn.is-pressed { background: var(--key-fn-press); }
-
-.key--op { background: var(--accent); color: #24160a; font-size: clamp(1.6rem, 7vw, 2.2rem); }
-.key--op:active, .key--op.is-pressed { background: var(--accent-press); }
-.key--op[aria-pressed="true"] { background: #fff; color: var(--accent); }
-
-.key--eq { background: var(--eq); color: #05231f; }
-.key--eq:active, .key--eq.is-pressed { background: var(--eq-press); }
 
 .key:focus-visible {
   outline: 3px solid var(--eq);
@@ -266,11 +426,10 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .key { transition: none; }
-  .key:active, .key.is-pressed { transform: none; }
 }
 
-/* Landscape phones: drop the chrome and let the keypad take the leftover
-   height, so the bottom row never falls off a short viewport. */
+/* Landscape phones: drop the chrome and let the keypad take the height it
+   needs. History gives way first — it can collapse to nothing. */
 @media (orientation: landscape) and (max-height: 560px) {
   .topbar { padding: 0 2px; gap: 7px; }
   .topbar h1 { font-size: 0.85rem; }
@@ -279,28 +438,27 @@ body {
   .chip--icon { width: 22px; height: 22px; }
   .icon { width: 14px; height: 14px; }
 
-  .display {
-    min-height: 48px;
-    max-height: 24dvh;
-    padding: 6px 14px 8px;
-    border-radius: 14px;
-  }
+  .history { flex: 0 1 auto; }
+  .history__empty { display: none; }
+  .entry__result { font-size: 1rem; }
+  .entry__expression { font-size: 0.7rem; }
 
-  .expression { font-size: clamp(1.7rem, 6.5vh, 2.4rem); }
-  .expression[data-len="md"] { font-size: clamp(1.4rem, 5.5vh, 2rem); }
-  .expression[data-len="sm"] { font-size: clamp(1.15rem, 4.5vh, 1.7rem); }
-  .expression[data-len="xs"] { font-size: clamp(1rem, 3.8vh, 1.4rem); }
-  .preview { min-height: 18px; font-size: 0.85rem; }
+  .display { padding: 4px 4px 6px; }
+  .entryline { min-height: 16px; font-size: 0.8rem; }
+
+  .result { font-size: clamp(1.5rem, 5.5vh, 2rem); }
+  .result[data-len="md"] { font-size: clamp(1.25rem, 4.8vh, 1.7rem); }
+  .result[data-len="sm"] { font-size: clamp(1.05rem, 4vh, 1.45rem); }
+  .result[data-len="xs"] { font-size: clamp(0.9rem, 3.4vh, 1.25rem); }
 
   .keypad {
     flex: 1 1 auto;
     height: auto;
     min-height: 0;
-    grid-auto-rows: minmax(0, 1fr);
-    gap: 7px;
+    grid-template-rows: repeat(6, minmax(0, 1fr));
   }
 
-  .key { border-radius: 12px; font-size: clamp(1rem, 3.6vh, 1.5rem); }
-  .key--fn { font-size: clamp(0.9rem, 3.2vh, 1.3rem); }
-  .key--op { font-size: clamp(1.1rem, 4vh, 1.7rem); }
+  .key { font-size: clamp(0.95rem, 3.2vh, 1.4rem); }
+  .key--fn { font-size: clamp(0.85rem, 2.8vh, 1.2rem); }
+  .key--op { font-size: clamp(1.05rem, 3.6vh, 1.6rem); }
 }

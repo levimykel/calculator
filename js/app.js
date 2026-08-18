@@ -1,12 +1,20 @@
-import { Calculator, formatNumber } from './calculator.js';
+import { Calculator, formatNumber, tokenParts } from './calculator.js';
+import { History } from './history.js';
 import { play, warmUp, soundLevel, cycleSoundLevel } from './feedback.js';
 import { tap } from './haptics.js';
 import { initUpdates, STATUS } from './update.js';
 
 const calc = new Calculator();
-const expressionEl = document.getElementById('expression');
-const previewEl = document.getElementById('preview');
+const resultEl = document.getElementById('result');
+const entryLineEl = document.getElementById('entryLine');
 const clearKey = document.getElementById('clearKey');
+const starKey = document.getElementById('starKey');
+const historyEl = document.getElementById('historyScroll');
+const historyList = document.getElementById('historyList');
+const historyEmpty = document.getElementById('historyEmpty');
+const clearHistoryBtn = document.getElementById('clearHistory');
+
+const history = new History();
 const keypad = document.getElementById('keypad');
 const soundToggle = document.getElementById('soundToggle');
 const versionChip = document.getElementById('versionChip');
@@ -20,41 +28,43 @@ for (const key of keypad.querySelectorAll('.key')) {
   else keysByAction.set(key.dataset.action, key);
 }
 
-let lastExpression = null;
-let lastPreview = null;
+let lastResult = null;
+let lastEntry = null;
 let lastClearMode = null;
 
 function render() {
   const state = calc.state();
 
-  // While typing, the big line is the expression itself; once you press equals
-  // the result takes that place and the expression it came from moves below.
-  const main = state.errored
+  // The big line is always a value, and the small line always the expression
+  // behind it — the same shape as the history rows above.
+  const result = state.errored
     ? 'Error'
-    : state.isEmpty ? '0' : state.expression;
+    : state.preview !== null
+      ? formatNumber(state.preview)
+      : state.committed !== null
+        ? formatNumber(state.tokens[0].text)
+        : '0';
 
-  if (main !== lastExpression) {
-    expressionEl.textContent = main;
-    expressionEl.dataset.len = lengthBucket(main.length);
-    lastExpression = main;
+  if (result !== lastResult) {
+    resultEl.textContent = result;
+    resultEl.dataset.len = lengthBucket(result.length);
+    resultEl.scrollLeft = resultEl.scrollWidth;
+    lastResult = result;
+  }
+
+  const entry = state.errored ? '' : state.expression;
+  if (entry !== lastEntry) {
+    entryLineEl.replaceChildren(state.errored ? '' : expressionNodes(state.tokens));
     // Keep the tail of a long expression in view, where the typing is.
-    expressionEl.scrollLeft = expressionEl.scrollWidth;
+    entryLineEl.scrollLeft = entryLineEl.scrollWidth;
+    lastEntry = entry;
   }
 
-  const preview = state.errored
-    ? ''
-    : state.committed !== null
-      ? `${state.committed} =`
-      : state.preview === null ? '' : `= ${formatNumber(state.preview)}`;
+  resultEl.classList.toggle('is-error', state.errored);
 
-  if (preview !== lastPreview) {
-    previewEl.textContent = preview;
-    previewEl.scrollLeft = previewEl.scrollWidth;
-    lastPreview = preview;
-  }
-
-  expressionEl.classList.toggle('is-error', state.errored);
-  expressionEl.classList.toggle('is-result', state.committed !== null);
+  const newest = history.newest();
+  starKey.disabled = newest === null;
+  starKey.dataset.on = String(Boolean(newest && newest.favourite));
 
   // The bottom-left key deletes while there is something to delete, and is a
   // full clear otherwise. A committed result and an error both reset wholesale
@@ -71,11 +81,6 @@ function canBackspace(state) {
   return !state.isEmpty && state.committed === null && !state.errored;
 }
 
-/**
- * Size buckets for the main line. Tuned so that a full-length result — 15
- * significant digits plus separators and a sign, about 20 characters — still
- * fits the narrowest phone. Expressions longer than that scroll instead.
- */
 function lengthBucket(length) {
   if (length <= 8) return 'lg';
   if (length <= 12) return 'md';
@@ -96,11 +101,27 @@ function perform(action, dataset = {}) {
     case 'digit': calc.digit(dataset.digit); break;
     case 'decimal': calc.decimal(); break;
     case 'operator': calc.operator(dataset.op); break;
-    case 'equals': calc.equals(); break;
+    case 'equals': {
+      const before = calc.state().committed;
+      calc.equals();
+      const after = calc.state();
+      // Only a fresh evaluation is worth recording; pressing = on a result
+      // that is already committed does nothing.
+      if (after.committed !== null && after.committed !== before && !after.errored) {
+        history.add({
+          tokens: after.committedTokens,
+          expression: after.committed,
+          result: Number(after.tokens[0].text),
+        });
+        renderHistory();
+      }
+      break;
+    }
     case 'clearAll': calc.clearAll(); break;
     case 'negate': calc.negate(); break;
     case 'percent': calc.percent(); break;
     case 'paren': calc.paren(); break;
+    case 'star': starNewest(); break;
     case 'clearOrBack':
       if (canBackspace(calc.state())) calc.backspace();
       else calc.clearAll();
@@ -163,6 +184,105 @@ keypad.addEventListener('click', (event) => {
   if (!key) return;
   if (event.timeStamp - lastPointerAt < 700) return;
   activate(key.dataset.action, key.dataset, false);
+});
+
+/* ------------------------------------------------------------- history */
+
+function starNewest() {
+  const newest = history.newest();
+  if (!newest) return;
+  history.toggleFavourite(newest.id);
+  renderHistory();
+}
+
+/** Build one expression as text nodes plus operator chips. */
+function expressionNodes(tokens) {
+  const fragment = document.createDocumentFragment();
+  for (const part of tokenParts(tokens)) {
+    if (part.kind === 'operator' && !part.unary) {
+      const chip = document.createElement('span');
+      chip.className = 'chip-op';
+      chip.textContent = part.text;
+      fragment.append(chip);
+      continue;
+    }
+    fragment.append(document.createTextNode(part.text));
+  }
+  return fragment;
+}
+
+function renderHistory() {
+  const entries = history.list();
+
+  historyEmpty.hidden = entries.length > 0;
+  clearHistoryBtn.hidden = entries.length === 0;
+  historyList.replaceChildren();
+
+  // Oldest first, so the newest ends up nearest the display — which is also
+  // where the scroll rests.
+  for (const entry of [...entries].reverse()) {
+    const row = document.createElement('li');
+    row.className = 'entry';
+    row.dataset.id = entry.id;
+
+    const star = document.createElement('button');
+    star.type = 'button';
+    star.className = 'entry__star';
+    star.dataset.star = entry.id;
+    star.setAttribute('aria-pressed', String(entry.favourite));
+    star.setAttribute('aria-label', entry.favourite ? 'Unstar this calculation' : 'Star this calculation');
+    star.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/></svg>';
+
+    const recall = document.createElement('button');
+    recall.type = 'button';
+    recall.className = 'entry__recall';
+    recall.dataset.recall = entry.id;
+    recall.setAttribute('aria-label', `Use ${formatNumber(entry.result)} from ${entry.expression}`);
+
+    const result = document.createElement('span');
+    result.className = 'entry__result';
+    result.textContent = formatNumber(entry.result);
+
+    const expression = document.createElement('span');
+    expression.className = 'entry__expression';
+    expression.append(expressionNodes(entry.tokens));
+
+    recall.append(result, expression);
+    row.append(star, recall);
+    historyList.append(row);
+  }
+
+  historyEl.scrollTop = historyEl.scrollHeight;
+}
+
+historyEl.addEventListener('click', (event) => {
+  const star = event.target.closest('[data-star]');
+  if (star) {
+    history.toggleFavourite(star.dataset.star);
+    play('fn');
+    tap();
+    renderHistory();
+    render();
+    return;
+  }
+
+  const recall = event.target.closest('[data-recall]');
+  if (!recall) return;
+  const entry = history.find(recall.dataset.recall);
+  if (!entry) return;
+  warmUp();
+  play('key');
+  tap();
+  calc.insertValue(entry.result);
+  render();
+});
+
+clearHistoryBtn.addEventListener('click', () => {
+  history.clear();
+  play('fn');
+  tap();
+  renderHistory();
+  render();
 });
 
 /* Keyboard support, for the iPad's hardware keyboard and for desktop. */
@@ -313,4 +433,5 @@ versionChip.addEventListener('click', () => {
 
 renderSoundToggle();
 setChip(STATUS.IDLE);
+renderHistory();
 render();

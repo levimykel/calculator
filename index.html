@@ -35,45 +35,62 @@
         <path class="icon__cross" d="M15.8 9.8l4.4 4.4M20.2 9.8l-4.4 4.4"/>
       </svg>
     </button>
-    <button class="chip" id="versionChip" type="button" aria-live="polite">v2.1.0</button>
+    <button class="chip" id="versionChip" type="button" aria-live="polite">v3.0.0</button>
   </header>
 
+  <section class="history" aria-label="History">
+    <div class="history__bar">
+      <button class="history__clear" id="clearHistory" type="button" hidden>Clear</button>
+    </div>
+    <div class="history__scroll" id="historyScroll">
+      <ol class="history__list" id="historyList"></ol>
+      <p class="history__empty" id="historyEmpty">Calculations you finish will collect here.</p>
+    </div>
+  </section>
+
   <section class="display">
-    <output class="expression" id="expression" aria-label="Expression">0</output>
-    <output class="preview" id="preview" aria-live="polite" aria-atomic="true"></output>
+    <output class="result" id="result" aria-label="Result" aria-live="polite" aria-atomic="true">0</output>
+    <div class="entryline" id="entryLine" aria-label="Expression"></div>
   </section>
 
   <div class="keypad" id="keypad">
     <button class="key key--fn" data-action="negate" aria-label="Toggle sign">±</button>
-    <button class="key key--fn" data-action="paren" aria-label="Parenthesis">( )</button>
-    <button class="key key--fn" data-action="percent" aria-label="Percent">%</button>
-    <button class="key key--op" data-action="operator" data-op="divide" aria-label="Divide">÷</button>
+    <button class="key key--fn" data-action="openParen" aria-label="Open parenthesis">(</button>
+    <button class="key key--fn" data-action="closeParen" aria-label="Close parenthesis">)</button>
+    <button class="key key--fn key--star" id="starKey" data-action="star" data-on="false" aria-label="Star the last calculation">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/>
+      </svg>
+    </button>
 
     <button class="key" data-action="digit" data-digit="7">7</button>
     <button class="key" data-action="digit" data-digit="8">8</button>
     <button class="key" data-action="digit" data-digit="9">9</button>
-    <button class="key key--op" data-action="operator" data-op="multiply" aria-label="Multiply">×</button>
+    <button class="key key--op" data-action="operator" data-op="divide" aria-label="Divide">÷</button>
 
     <button class="key" data-action="digit" data-digit="4">4</button>
     <button class="key" data-action="digit" data-digit="5">5</button>
     <button class="key" data-action="digit" data-digit="6">6</button>
-    <button class="key key--op" data-action="operator" data-op="subtract" aria-label="Subtract">−</button>
+    <button class="key key--op" data-action="operator" data-op="multiply" aria-label="Multiply">×</button>
 
     <button class="key" data-action="digit" data-digit="1">1</button>
     <button class="key" data-action="digit" data-digit="2">2</button>
     <button class="key" data-action="digit" data-digit="3">3</button>
-    <button class="key key--op" data-action="operator" data-op="add" aria-label="Add">+</button>
+    <button class="key key--op" data-action="operator" data-op="subtract" aria-label="Subtract">−</button>
 
-    <button class="key key--fn key--clear" id="clearKey" data-action="clearOrBack" data-mode="clear" aria-label="All clear">
-      <span class="key__label">AC</span>
+    <button class="key" data-action="digit" data-digit="0">0</button>
+    <button class="key" data-action="decimal" aria-label="Decimal point">.</button>
+    <button class="key" data-action="percent" aria-label="Percent">%</button>
+    <button class="key key--op key--tall" data-action="operator" data-op="add" aria-label="Add">+</button>
+
+    <button class="key key--clear" id="clearKey" data-action="clearOrBack" data-mode="clear" aria-label="All clear">
+      <span class="key__label">C</span>
       <svg class="key__glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
         <path d="M8 5h12v14H8L2 12z"/>
         <path d="M11.5 9.5l5 5M16.5 9.5l-5 5"/>
       </svg>
     </button>
-    <button class="key" data-action="digit" data-digit="0">0</button>
-    <button class="key" data-action="decimal" aria-label="Decimal point">.</button>
-    <button class="key key--eq" data-action="equals" aria-label="Equals">=</button>
+    <button class="key key--eq key--wide" data-action="equals" aria-label="Equals">=</button>
   </div>
 
 <script type="module" src="js/app.js"></script>

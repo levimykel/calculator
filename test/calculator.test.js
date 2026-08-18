@@ -321,3 +321,44 @@ test('sign toggling a result negates it', () => {
   assert.equal(calc.state().expression, '−5');
   assert.equal(calc.equals().state().expression, '-5');
 });
+
+test('a committed calculation keeps its own tokens for the history', () => {
+  const calc = run('2+3*4=');
+  assert.equal(calc.state().committed, '2 + 3 × 4');
+  assert.equal(formatTokens(calc.state().committedTokens), '2 + 3 × 4',
+    'the expression tokens survive even though `tokens` now holds the result');
+  assert.equal(calc.state().expression, '14');
+});
+
+test('committed tokens include the parentheses that were closed for you', () => {
+  const calc = run('2*(3+4=');
+  assert.equal(formatTokens(calc.state().committedTokens), '2 × (3 + 4)');
+});
+
+test('committed tokens clear when a new expression starts', () => {
+  const calc = run('2+3=');
+  calc.digit('9');
+  assert.equal(calc.state().committedTokens, null);
+});
+
+test('insertValue drops a history result into the expression', () => {
+  const calc = new Calculator();
+  calc.insertValue(42);
+  assert.equal(calc.state().expression, '42');
+  calc.operator('add');
+  calc.insertValue(8);
+  assert.equal(calc.state().expression, '42 + 8');
+  assert.equal(calc.equals().state().expression, '50');
+});
+
+test('insertValue after a closed group multiplies', () => {
+  const calc = run('p2+3p');
+  calc.insertValue(4);
+  assert.equal(calc.state().expression, '(2 + 3) × 4');
+});
+
+test('insertValue replaces a result rather than appending to it', () => {
+  const calc = run('2+3=');
+  calc.insertValue(9);
+  assert.equal(calc.state().expression, '9');
+});
