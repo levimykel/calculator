@@ -150,42 +150,90 @@ body {
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  align-items: flex-end;
-  gap: 6px;
-  padding: 14px 16px 18px;
+  gap: 4px;
+  padding: 14px 16px 16px;
   background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
   border: 1px solid rgba(255,255,255,0.07);
   border-radius: var(--radius);
   overflow: hidden;
 }
 
+/* The expression being typed. It scrolls rather than shrinking without limit,
+   so the end you are typing at stays in view. */
 .expression {
-  font-size: clamp(0.9rem, 3.4vw, 1.1rem);
-  color: var(--muted);
-  min-height: 1.3em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-}
-
-.result {
-  font-size: clamp(2.6rem, 15vw, 4.2rem);
+  display: block;
+  width: 100%;
+  text-align: right;
+  font-size: clamp(2.4rem, 13vw, 3.6rem);
   font-weight: 600;
-  line-height: 1.05;
+  line-height: 1.15;
   letter-spacing: -0.02em;
   white-space: nowrap;
-  max-width: 100%;
-  /* Let the user copy the answer even though the rest of the app is unselectable. */
+  overflow-x: auto;
+  scrollbar-width: none;
   -webkit-user-select: text;
   user-select: text;
 }
 
-.result[data-len="md"] { font-size: clamp(2.1rem, 11vw, 3.3rem); }
-.result[data-len="sm"] { font-size: clamp(1.7rem, 8.5vw, 2.6rem); }
-.result[data-len="xs"] { font-size: clamp(1.3rem, 6.5vw, 2rem); }
+.expression::-webkit-scrollbar { display: none; }
 
-.result.is-error { color: var(--accent); }
+.expression[data-len="md"] { font-size: clamp(2rem, 10vw, 2.9rem); }
+.expression[data-len="sm"] { font-size: clamp(1.6rem, 7.5vw, 2.3rem); }
+.expression[data-len="xs"] { font-size: clamp(1.3rem, 6vw, 1.9rem); }
+
+.expression.is-error { color: var(--accent); }
+/* A committed result reads as an answer rather than as more input. */
+.expression.is-result { color: var(--eq); }
+
+.readout {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 26px;
+}
+
+.preview {
+  flex: 1 1 auto;
+  text-align: right;
+  font-size: clamp(0.9rem, 3.6vw, 1.15rem);
+  color: var(--muted);
+  white-space: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.preview::-webkit-scrollbar { display: none; }
+
+.backspace {
+  flex: 0 0 auto;
+  -webkit-appearance: none;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 4px 8px 4px 0;
+  margin: -4px 0;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  touch-action: none;
+  transition: color 130ms ease-out, opacity 130ms ease-out;
+}
+
+.backspace svg {
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.backspace:active,
+.backspace.is-pressed { color: var(--accent); transition-duration: 0s; }
+.backspace[disabled] { opacity: 0.3; cursor: default; }
 
 .keypad {
   flex: 0 0 auto;
@@ -224,6 +272,7 @@ body {
 }
 
 .key--fn { background: var(--key-fn); font-size: clamp(1.2rem, 5vw, 1.6rem); }
+.key--fn[data-action="paren"] { letter-spacing: -0.06em; }
 .key--fn:active, .key--fn.is-pressed { background: var(--key-fn-press); }
 
 .key--op { background: var(--accent); color: #24160a; font-size: clamp(1.6rem, 7vw, 2.2rem); }
@@ -232,8 +281,6 @@ body {
 
 .key--eq { background: var(--eq); color: #05231f; }
 .key--eq:active, .key--eq.is-pressed { background: var(--eq-press); }
-
-.key--zero { grid-column: span 2; }
 
 .key:focus-visible {
   outline: 3px solid var(--eq);
@@ -262,12 +309,12 @@ body {
     border-radius: 14px;
   }
 
-  .expression { font-size: 0.85rem; }
-
-  .result { font-size: clamp(1.8rem, 7vh, 2.6rem); }
-  .result[data-len="md"] { font-size: clamp(1.5rem, 6vh, 2.2rem); }
-  .result[data-len="sm"] { font-size: clamp(1.2rem, 5vh, 1.8rem); }
-  .result[data-len="xs"] { font-size: clamp(1rem, 4vh, 1.5rem); }
+  .expression { font-size: clamp(1.7rem, 6.5vh, 2.4rem); }
+  .expression[data-len="md"] { font-size: clamp(1.4rem, 5.5vh, 2rem); }
+  .expression[data-len="sm"] { font-size: clamp(1.15rem, 4.5vh, 1.7rem); }
+  .expression[data-len="xs"] { font-size: clamp(1rem, 3.8vh, 1.4rem); }
+  .readout { min-height: 20px; }
+  .backspace svg { width: 20px; height: 20px; }
 
   .keypad {
     flex: 1 1 auto;

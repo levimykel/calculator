@@ -1,18 +1,17 @@
-import { Calculator, formatDisplay } from './calculator.js';
+import { Calculator, formatNumber } from './calculator.js';
 import { play, warmUp, soundLevel, cycleSoundLevel } from './feedback.js';
 import { tap } from './haptics.js';
 import { initUpdates, STATUS } from './update.js';
 
 const calc = new Calculator();
-const resultEl = document.getElementById('result');
 const expressionEl = document.getElementById('expression');
-const clearKey = document.getElementById('clearKey');
+const previewEl = document.getElementById('preview');
+const backspaceKey = document.getElementById('backspaceKey');
 const keypad = document.getElementById('keypad');
 const soundToggle = document.getElementById('soundToggle');
 const versionChip = document.getElementById('versionChip');
 
 // Looked up once: render() runs on every keypress and should not be querying.
-const opKeys = [...keypad.querySelectorAll('[data-op]')];
 const keysByAction = new Map();
 const keysByDigit = new Map();
 for (const key of keypad.querySelectorAll('.key')) {
@@ -21,40 +20,52 @@ for (const key of keypad.querySelectorAll('.key')) {
   else keysByAction.set(key.dataset.action, key);
 }
 
-let lastClearLabel = '';
-let lastExpression = '';
+let lastExpression = null;
+let lastPreview = null;
 
 function render() {
   const state = calc.state();
-  const text = formatDisplay(state.entry);
 
-  resultEl.textContent = text;
-  resultEl.classList.toggle('is-error', state.errored);
-  resultEl.dataset.len = lengthBucket(text.length);
+  // While typing, the big line is the expression itself; once you press equals
+  // the result takes that place and the expression it came from moves below.
+  const main = state.errored
+    ? 'Error'
+    : state.isEmpty ? '0' : state.expression;
 
-  // Skip the writes that would otherwise dirty layout on every single press.
-  if (state.expression !== lastExpression) {
-    expressionEl.textContent = state.expression;
-    lastExpression = state.expression;
+  if (main !== lastExpression) {
+    expressionEl.textContent = main;
+    expressionEl.dataset.len = lengthBucket(main.length);
+    lastExpression = main;
+    // Keep the tail of a long expression in view, where the typing is.
+    expressionEl.scrollLeft = expressionEl.scrollWidth;
   }
 
-  const label = state.hasClearableEntry ? 'C' : 'AC';
-  if (label !== lastClearLabel) {
-    clearKey.textContent = label;
-    clearKey.setAttribute('aria-label', label === 'AC' ? 'All clear' : 'Clear entry');
-    lastClearLabel = label;
+  const preview = state.errored
+    ? ''
+    : state.committed !== null
+      ? `${state.committed} =`
+      : state.preview === null ? '' : `= ${formatNumber(state.preview)}`;
+
+  if (preview !== lastPreview) {
+    previewEl.textContent = preview;
+    previewEl.scrollLeft = previewEl.scrollWidth;
+    lastPreview = preview;
   }
 
-  for (const key of opKeys) {
-    const active = !state.typing && calc.pendingOp === key.dataset.op;
-    key.setAttribute('aria-pressed', String(active));
-  }
+  expressionEl.classList.toggle('is-error', state.errored);
+  expressionEl.classList.toggle('is-result', state.committed !== null);
+  backspaceKey.disabled = state.isEmpty && state.committed === null && !state.errored;
 }
 
+/**
+ * Size buckets for the main line. Tuned so that a full-length result — 15
+ * significant digits plus separators and a sign, about 20 characters — still
+ * fits the narrowest phone. Expressions longer than that scroll instead.
+ */
 function lengthBucket(length) {
   if (length <= 8) return 'lg';
-  if (length <= 11) return 'md';
-  if (length <= 15) return 'sm';
+  if (length <= 12) return 'md';
+  if (length <= 16) return 'sm';
   return 'xs';
 }
 
@@ -72,10 +83,12 @@ function perform(action, dataset = {}) {
     case 'decimal': calc.decimal(); break;
     case 'operator': calc.operator(dataset.op); break;
     case 'equals': calc.equals(); break;
-    case 'clear': calc.clear(); break;
     case 'clearAll': calc.clearAll(); break;
     case 'negate': calc.negate(); break;
     case 'percent': calc.percent(); break;
+    case 'paren': calc.paren(); break;
+    case 'openParen': calc.openParen(); break;
+    case 'closeParen': calc.closeParen(); break;
     case 'backspace': calc.backspace(); break;
     default: return;
   }
@@ -130,6 +143,18 @@ keypad.addEventListener('click', (event) => {
   activate(key.dataset.action, key.dataset, false);
 });
 
+backspaceKey.addEventListener('pointerdown', (event) => {
+  if (event.button > 0 || backspaceKey.disabled) return;
+  lastPointerAt = event.timeStamp;
+  warmUp();
+  activate('backspace', {}, true);
+}, { passive: true });
+
+backspaceKey.addEventListener('click', (event) => {
+  if (event.timeStamp - lastPointerAt < 700) return;
+  activate('backspace', {}, false);
+});
+
 /* Keyboard support, for the iPad's hardware keyboard and for desktop. */
 const KEY_MAP = {
   '+': ['operator', { op: 'add' }],
@@ -143,11 +168,13 @@ const KEY_MAP = {
   '.': ['decimal', {}],
   ',': ['decimal', {}],
   '%': ['percent', {}],
+  '(': ['openParen', {}],
+  ')': ['closeParen', {}],
   Backspace: ['backspace', {}],
   Delete: ['clearAll', {}],
   Escape: ['clearAll', {}],
-  c: ['clear', {}],
-  C: ['clear', {}],
+  c: ['clearAll', {}],
+  C: ['clearAll', {}],
   n: ['negate', {}],
   N: ['negate', {}],
 };
@@ -180,7 +207,11 @@ function flash(action, payload) {
     ? keysByDigit.get(payload.digit)
     : action === 'operator'
       ? keysByAction.get(`op:${payload.op}`)
-      : keysByAction.get(action === 'clearAll' ? 'clear' : action);
+      : action === 'openParen' || action === 'closeParen'
+        ? keysByAction.get('paren')
+        : action === 'backspace'
+          ? backspaceKey
+          : keysByAction.get(action);
 
   if (!key) return;
   key.classList.add('is-pressed');

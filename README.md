@@ -7,10 +7,14 @@ full screen and offline, like a native app.
 
 ## What it does
 
+- Write out a whole expression before evaluating it. Pressing an operator adds
+  to the expression instead of calculating, and nothing is computed until `=`
+- Proper order of operations: `2 + 3 × 4` is 14, not 20
+- Parentheses, nested as deep as you like, from a single `( )` key that opens or
+  closes depending on where you are
+- A live preview of the result under the expression as you type
 - The usual four operations, plus `%`, `±`, and a decimal point
-- Chained arithmetic (`2 + 3 × 4 =`), and `=` repeats the last operation
-- `AC` / `C` — the key switches itself depending on whether there is an entry to clear
-- Swipe across the display to delete the last digit
+- Backspace in the display, or swipe across it
 - Full keyboard support, so it is usable with an iPad keyboard or on a desktop
 - Subtle mechanical key clicks, with a weightier one on `=`. The speaker button
   cycles soft / loud / off, and the choice is remembered
@@ -26,7 +30,7 @@ No build step and no dependencies — it is plain HTML, CSS, and ES modules.
 ```sh
 npm start          # serves the app at http://localhost:8080
 npm test           # runs the test suite
-npm run set-version 1.2.0   # bumps the version everywhere it appears
+npm run set-version 2.1.0   # bumps the version everywhere it appears
 ```
 
 Opening `index.html` directly from the filesystem will not work: ES modules and
@@ -119,16 +123,50 @@ That code has been removed rather than left in place pretending to work. Real
 haptics on iOS would need a native shell — a WKWebView app, or Capacitor — since
 UIKit's feedback generators are not reachable from a web page.
 
+## How the expression works
+
+`js/calculator.js` keeps the expression as a list of tokens — numbers,
+operators, parentheses, percent — and evaluates it only when asked. Evaluation
+is a recursive-descent parse:
+
+```
+expression := term (('+' | '−') term)*
+term       := unary (('×' | '÷' | juxtaposition) unary)*
+unary      := ('−' | '+') unary | postfix
+postfix    := primary '%'*
+primary    := number | '(' expression ')'
+```
+
+Precedence falls out of the nesting: `term` binds tighter than `expression`, so
+× and ÷ are applied before + and −, and parentheses restart the cycle.
+
+A few behaviours that are easy to get wrong, and are pinned by tests:
+
+- **Incomplete input is previewable.** `12 × (3 +` evaluates as `12 × 3` by
+  dropping the trailing operator and closing the open group. That is what makes
+  the live preview possible, and it is also what `=` does, so an unclosed
+  parenthesis never blocks a result.
+- **A repeated operator replaces rather than stacks.** Pressing `−` twice reads
+  as a correction. A minus after `×` or `÷` is kept, though, since `5 × −3` is a
+  real thing to type; `10 − −3` is written `10 − (−3)`.
+- **Percent is contextual.** `200 + 10%` is 220, because against `+` and `−` a
+  percent is taken of the left-hand side. Against `×` and `÷` it is just the
+  fraction, so `80 × 50%` is 40.
+- **`±` inserts a sign token** rather than editing digits, so `12 + −5` parses
+  through the same path as a minus you typed.
+- **Juxtaposition means multiplication.** The keypad inserts a visible `×` when
+  you type `2(`, and the parser accepts the bare form too.
+
 ## Layout
 
 ```
 index.html                app shell and keypad markup
 version.js                the version, read by both the page and the worker
 css/styles.css            all styling, including the landscape and safe-area handling
-js/calculator.js          the calculator engine — pure state machine, no DOM
+js/calculator.js          the engine — tokens, parser, evaluator; no DOM
 js/app.js                 wires the engine to the keypad, keyboard, and display
 js/feedback.js            synthesized key sounds (Web Audio, no audio files)
-js/haptics.js             press haptics, including the iOS workaround
+js/haptics.js             press haptics, where the platform provides them
 js/update.js              service worker registration and the update handshake
 sw.js                     service worker; precaches the app for offline use
 manifest.webmanifest      PWA metadata: name, icons, colors, display mode
@@ -149,5 +187,8 @@ reference to the DOM, which is what makes it straightforward to test.
 - **Keys act on `pointerdown`, not `click`**, which is what makes them feel
   immediate; a click handler remains only for keyboard activation, guarded by a
   timestamp so a real tap cannot count twice.
+- **The main display line scrolls rather than shrinking forever.** Its size
+  buckets in `js/app.js` are tuned so a full-length *result* still fits the
+  narrowest phone; expressions longer than that scroll to follow the caret.
 - **Icons** are generated from `icons/calcutron.svg`. If the artwork changes,
   re-export the PNGs at 32, 180, 192, and 512 px, plus the maskable 512 variant.

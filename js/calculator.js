@@ -1,13 +1,26 @@
 /**
- * Calcutron calculator engine.
+ * Calcutron expression engine.
  *
- * Pure state machine: no DOM, no globals. The UI layer feeds it actions and
- * renders whatever `state()` reports back.
+ * The calculator holds an expression as a list of tokens rather than
+ * evaluating as you go: pressing an operator appends to the expression, and
+ * nothing is computed until `=`. Evaluation is a recursive-descent parse, so
+ * × and ÷ bind tighter than + and −, and parentheses group.
+ *
+ * Pure: no DOM, no globals. The UI feeds it presses and renders `state()`.
  */
 
 const MAX_ENTRY_DIGITS = 12;
+const MAX_TOKENS = 240;
 const PRECISION = 15;
-const MAX_DISPLAY_DIGITS = 15;
+
+export const OPERATORS = {
+  add: '+',
+  subtract: '−',
+  multiply: '×',
+  divide: '÷',
+};
+
+const ADDITIVE = new Set(['add', 'subtract']);
 
 /** Kill binary-float artifacts (0.1 + 0.2 -> 0.30000000000000004). */
 function clean(n) {
@@ -16,17 +29,167 @@ function clean(n) {
   return Object.is(rounded, -0) ? 0 : rounded;
 }
 
-function apply(a, op, b) {
-  switch (op) {
-    case 'add': return a + b;
-    case 'subtract': return a - b;
-    case 'multiply': return a * b;
-    case 'divide': return a / b;
-    default: return b;
+/* ------------------------------------------------------------------ parsing */
+
+class ParseError extends Error {}
+
+/**
+ * Grammar, loosest binding first:
+ *
+ *   expression := term (('+' | '−') term)*
+ *   term       := unary (('×' | '÷' | juxtaposition) unary)*
+ *   unary      := ('−' | '+') unary | postfix
+ *   postfix    := primary '%'*
+ *   primary    := number | '(' expression ')'
+ *
+ * Juxtaposition is implicit multiplication: "2(3+4)" and "(1+2)(3)". The UI
+ * inserts an explicit × for those, but the parser accepts them regardless so
+ * that a hand-built token list cannot produce a surprise.
+ */
+export function parse(tokens) {
+  const state = { tokens, at: 0 };
+  const node = parseExpression(state);
+  if (state.at < tokens.length) throw new ParseError('trailing tokens');
+  return node;
+}
+
+const peek = (s) => s.tokens[s.at];
+const take = (s) => s.tokens[s.at++];
+
+function parseExpression(s) {
+  let left = parseTerm(s);
+  while (peek(s)?.type === 'operator' && ADDITIVE.has(peek(s).op)) {
+    const { op } = take(s);
+    left = { type: 'binary', op, left, right: parseTerm(s) };
+  }
+  return left;
+}
+
+function parseTerm(s) {
+  let left = parseUnary(s);
+  for (;;) {
+    const next = peek(s);
+    if (next?.type === 'operator' && !ADDITIVE.has(next.op)) {
+      const { op } = take(s);
+      left = { type: 'binary', op, left, right: parseUnary(s) };
+    } else if (next?.type === 'open' || next?.type === 'number') {
+      left = { type: 'binary', op: 'multiply', left, right: parseUnary(s) };
+    } else {
+      return left;
+    }
   }
 }
 
-const OP_SYMBOLS = { add: '+', subtract: '−', multiply: '×', divide: '÷' };
+function parseUnary(s) {
+  const next = peek(s);
+  if (next?.type === 'operator' && ADDITIVE.has(next.op)) {
+    take(s);
+    const operand = parseUnary(s);
+    return next.op === 'subtract' ? { type: 'negate', operand } : operand;
+  }
+  return parsePostfix(s);
+}
+
+function parsePostfix(s) {
+  let node = parsePrimary(s);
+  while (peek(s)?.type === 'percent') {
+    take(s);
+    node = { type: 'percent', operand: node };
+  }
+  return node;
+}
+
+function parsePrimary(s) {
+  const token = take(s);
+  if (!token) throw new ParseError('unexpected end of expression');
+
+  if (token.type === 'number') {
+    const value = Number(token.text);
+    if (!Number.isFinite(value)) throw new ParseError('bad number');
+    return { type: 'number', value };
+  }
+
+  if (token.type === 'open') {
+    const inner = parseExpression(s);
+    if (peek(s)?.type === 'close') take(s);
+    return inner; // Grouping only affects parsing, so no node of its own.
+  }
+
+  throw new ParseError(`unexpected ${token.type}`);
+}
+
+/* -------------------------------------------------------------- evaluation */
+
+export function evaluate(node) {
+  switch (node.type) {
+    case 'number':
+      return node.value;
+    case 'negate':
+      return -evaluate(node.operand);
+    case 'percent':
+      return evaluate(node.operand) / 100;
+    case 'binary':
+      return applyBinary(node);
+    default:
+      throw new ParseError(`unknown node ${node.type}`);
+  }
+}
+
+function applyBinary(node) {
+  const left = evaluate(node.left);
+
+  // "200 + 10%" means 200 + 10% *of 200*, matching how phone calculators
+  // behave. Against × and ÷ a percent is just the plain fraction.
+  const right = ADDITIVE.has(node.op) && node.right.type === 'percent'
+    ? left * (evaluate(node.right.operand) / 100)
+    : evaluate(node.right);
+
+  switch (node.op) {
+    case 'add': return left + right;
+    case 'subtract': return left - right;
+    case 'multiply': return left * right;
+    case 'divide': return left / right;
+    default: throw new ParseError(`unknown operator ${node.op}`);
+  }
+}
+
+/**
+ * Make a token list evaluable: drop a trailing operator or open paren, and
+ * close any parens left open. Typing is allowed to be mid-thought; this is
+ * what makes "12 × (3 +" previewable as 12 × 3.
+ */
+export function normalize(tokens) {
+  const out = tokens.slice();
+
+  while (out.length) {
+    const last = out[out.length - 1];
+    if (last.type === 'operator' || last.type === 'open') out.pop();
+    else break;
+  }
+
+  let depth = 0;
+  for (const token of out) {
+    if (token.type === 'open') depth += 1;
+    else if (token.type === 'close') depth -= 1;
+  }
+  for (let i = 0; i < depth; i += 1) out.push({ type: 'close' });
+
+  return out;
+}
+
+/** @returns {number|null} null when the expression cannot be evaluated yet. */
+export function valueOf(tokens) {
+  const normalized = normalize(tokens);
+  if (!normalized.length) return null;
+  try {
+    const result = clean(evaluate(parse(normalized)));
+    return Number.isFinite(result) ? result : NaN;
+  } catch {
+    return null;
+  }
+}
+
+/* ------------------------------------------------------------- the machine */
 
 export class Calculator {
   constructor() {
@@ -34,144 +197,209 @@ export class Calculator {
   }
 
   reset() {
-    this.entry = '0';        // digits the user is currently typing
-    this.typing = false;     // true once entry reflects user input, not a result
-    this.accumulator = null; // left-hand value of a pending operation
-    this.pendingOp = null;
-    this.repeatOp = null;    // remembered for pressing = repeatedly
-    this.repeatOperand = null;
+    this.tokens = [];
+    this.committed = null;   // the expression text that produced a result
     this.errored = false;
   }
 
-  /** Numeric value currently shown. */
-  get value() {
-    const n = parseFloat(this.entry);
-    return Number.isFinite(n) ? n : 0;
+  get last() {
+    return this.tokens[this.tokens.length - 1];
+  }
+
+  get openDepth() {
+    let depth = 0;
+    for (const token of this.tokens) {
+      if (token.type === 'open') depth += 1;
+      else if (token.type === 'close') depth -= 1;
+    }
+    return depth;
   }
 
   state() {
+    const preview = this.committed === null ? valueOf(this.tokens) : null;
     return {
-      entry: this.entry,
-      typing: this.typing,
+      tokens: this.tokens,
+      expression: formatTokens(this.tokens),
+      committed: this.committed,
+      preview: preview === null || Number.isNaN(preview) ? null : preview,
       errored: this.errored,
-      expression: this.expression(),
-      hasClearableEntry: this.typing || this.entry !== '0',
+      isEmpty: this.tokens.length === 0,
+      openDepth: this.openDepth,
     };
   }
 
-  /** The small line above the result: "12 x" or "12 x 5". */
-  expression() {
-    if (this.errored) return '';
-    if (this.accumulator === null || this.pendingOp === null) return '';
-    const left = String(clean(this.accumulator));
-    const symbol = OP_SYMBOLS[this.pendingOp] ?? '';
-    return this.typing ? `${left} ${symbol} ${this.entry}` : `${left} ${symbol}`;
+  /** After `=`, the next keypress either starts over or builds on the result. */
+  continueFromResult(keepResult) {
+    if (this.committed === null) return;
+    this.committed = null;
+    if (!keepResult) this.tokens = [];
+  }
+
+  full() {
+    return this.tokens.length >= MAX_TOKENS;
   }
 
   digit(d) {
     if (this.errored) this.reset();
-    if (!this.typing) {
-      this.entry = d === '0' ? '0' : d;
-      this.typing = true;
-      return this;
-    }
-    if (this.entry === '0') {
-      if (d === '0') return this;
-      this.entry = d;
-      return this;
-    }
-    if (this.countDigits(this.entry) >= MAX_ENTRY_DIGITS) return this;
-    this.entry += d;
-    return this;
-  }
+    this.continueFromResult(false);
 
-  countDigits(s) {
-    return s.replace(/[^0-9]/g, '').length;
+    const last = this.last;
+    if (last?.type === 'number') {
+      if (countDigits(last.text) >= MAX_ENTRY_DIGITS) return this;
+      last.text = last.text === '0' ? d : last.text + d;
+      return this;
+    }
+
+    // A number straight after ")" or "%" means multiplication; make it visible
+    // rather than leaving the parser to infer it.
+    if (last?.type === 'close' || last?.type === 'percent') this.push({ type: 'operator', op: 'multiply' });
+    return this.push({ type: 'number', text: d });
   }
 
   decimal() {
     if (this.errored) this.reset();
-    if (!this.typing) {
-      this.entry = '0.';
-      this.typing = true;
+    this.continueFromResult(false);
+
+    const last = this.last;
+    if (last?.type === 'number') {
+      if (!last.text.includes('.')) last.text += '.';
       return this;
     }
-    if (!this.entry.includes('.')) this.entry += '.';
-    return this;
+    if (last?.type === 'close' || last?.type === 'percent') this.push({ type: 'operator', op: 'multiply' });
+    return this.push({ type: 'number', text: '0.' });
   }
 
+  operator(op) {
+    if (this.errored) return this;
+    this.continueFromResult(true);
+
+    const last = this.last;
+
+    // Nothing to operate on yet: only a leading minus makes sense.
+    if (!last || last.type === 'open') {
+      return op === 'subtract' ? this.push({ type: 'operator', op }) : this;
+    }
+
+    if (last.type === 'operator') {
+      // "5 × −" is a real thing to type, so a minus after an operator is kept
+      // as a unary sign. Anything else replaces the operator.
+      if (op === 'subtract' && !ADDITIVE.has(last.op)) return this.push({ type: 'operator', op });
+      last.op = op;
+      return this;
+    }
+
+    return this.push({ type: 'operator', op });
+  }
+
+  openParen() {
+    if (this.errored) this.reset();
+    this.continueFromResult(false);
+
+    const last = this.last;
+    if (last?.type === 'number' || last?.type === 'close' || last?.type === 'percent') {
+      this.push({ type: 'operator', op: 'multiply' });
+    }
+    return this.push({ type: 'open' });
+  }
+
+  closeParen() {
+    if (this.errored) return this;
+    if (this.committed !== null) return this;
+
+    // Only closeable when something is open and the group has content in it.
+    if (this.openDepth <= 0) return this;
+    const last = this.last;
+    if (!last || last.type === 'operator' || last.type === 'open') return this;
+
+    return this.push({ type: 'close' });
+  }
+
+  /**
+   * The keypad has one parenthesis key. It closes when there is a group open
+   * with something in it, and opens otherwise — which is what you want the
+   * overwhelming majority of the time.
+   */
+  paren() {
+    const last = this.last;
+    const closeable = this.openDepth > 0
+      && this.committed === null
+      && (last?.type === 'number' || last?.type === 'close' || last?.type === 'percent');
+    return closeable ? this.closeParen() : this.openParen();
+  }
+
+  /**
+   * Flip the sign of the number just typed, by adding or removing a unary
+   * minus in front of it. Reusing the sign token means "12 + −5" parses and
+   * renders through the same path as a minus you typed yourself.
+   */
   negate() {
     if (this.errored) return this;
-    if (this.entry === '0' || this.entry === '0.') return this;
-    this.entry = this.entry.startsWith('-') ? this.entry.slice(1) : `-${this.entry}`;
+    this.continueFromResult(true);
+
+    if (this.last?.type !== 'number') return this;
+
+    const signIndex = this.tokens.length - 2;
+    const sign = this.tokens[signIndex];
+    const isSign = sign?.type === 'operator'
+      && ADDITIVE.has(sign.op)
+      && isUnaryAt(this.tokens, signIndex);
+
+    if (isSign) {
+      if (sign.op === 'subtract') this.tokens.splice(signIndex, 1);
+      else sign.op = 'subtract';
+      return this;
+    }
+
+    this.tokens.splice(this.tokens.length - 1, 0, { type: 'operator', op: 'subtract' });
     return this;
   }
 
   percent() {
     if (this.errored) return this;
-    // 200 + 10% means 200 + 20, matching how phone calculators behave.
-    const base = this.pendingOp === 'add' || this.pendingOp === 'subtract'
-      ? (this.accumulator ?? 0)
-      : 1;
-    this.setResult(clean(this.value * (base / 100)));
-    return this;
-  }
+    this.continueFromResult(true);
 
-  operator(op) {
-    if (this.errored) return this;
-    if (this.pendingOp !== null && this.typing) {
-      const result = clean(apply(this.accumulator, this.pendingOp, this.value));
-      if (!this.setResult(result)) return this;
-      this.accumulator = result;
-    } else {
-      this.accumulator = this.value;
-    }
-    this.pendingOp = op;
-    this.typing = false;
-    this.repeatOp = null;
-    this.repeatOperand = null;
-    return this;
+    const last = this.last;
+    if (last?.type !== 'number' && last?.type !== 'close' && last?.type !== 'percent') return this;
+    return this.push({ type: 'percent' });
   }
 
   equals() {
     if (this.errored) return this;
-    let op = this.pendingOp;
-    let operand = this.value;
+    if (this.committed !== null) return this; // Already a result; nothing to redo.
+    if (!this.tokens.length) return this;
 
-    if (op === null) {
-      // Pressing = again repeats the last operation: 2 + 3 = = -> 8.
-      if (this.repeatOp === null) return this;
-      op = this.repeatOp;
-      operand = this.repeatOperand;
-      this.accumulator = this.value;
+    const expression = formatTokens(normalize(this.tokens));
+    const result = valueOf(this.tokens);
+
+    if (result === null) return this;
+    if (Number.isNaN(result)) {
+      this.reset();
+      this.errored = true;
+      return this;
     }
 
-    const result = clean(apply(this.accumulator ?? 0, op, operand));
-    this.repeatOp = op;
-    this.repeatOperand = operand;
-    this.accumulator = null;
-    this.pendingOp = null;
-    this.setResult(result);
+    this.tokens = [{ type: 'number', text: String(result) }];
+    this.committed = expression;
     return this;
   }
 
   backspace() {
     if (this.errored) { this.reset(); return this; }
-    if (!this.typing) return this;
-    const next = this.entry.slice(0, -1);
-    this.entry = next === '' || next === '-' ? '0' : next;
-    if (this.entry === '0') this.typing = false;
-    return this;
-  }
 
-  /** AC when there is nothing to clear, otherwise C (clear the current entry). */
-  clear() {
-    if (this.errored || !this.state().hasClearableEntry) {
-      this.reset();
+    // Backspacing a result drops it and returns to an empty expression rather
+    // than letting you edit digits that were computed, not typed.
+    if (this.committed !== null) { this.reset(); return this; }
+
+    const last = this.last;
+    if (!last) return this;
+
+    if (last.type === 'number' && last.text.length > 1) {
+      last.text = last.text.slice(0, -1);
+      if (last.text === '-') this.tokens.pop();
       return this;
     }
-    this.entry = '0';
-    this.typing = false;
+
+    this.tokens.pop();
     return this;
   }
 
@@ -180,33 +408,66 @@ export class Calculator {
     return this;
   }
 
-  /** @returns {boolean} false when the result was not a usable number. */
-  setResult(n) {
-    if (!Number.isFinite(n)) {
-      this.reset();
-      this.errored = true;
-      this.entry = 'Error';
-      return false;
-    }
-    this.entry = String(n);
-    this.typing = false;
-    return true;
+  push(token) {
+    if (this.full()) return this;
+    this.tokens.push(token);
+    return this;
   }
 }
 
-/** Render an entry string for the display: grouped, sane length, sane exponents. */
-export function formatDisplay(entry) {
-  if (entry === 'Error') return 'Error';
+function countDigits(text) {
+  return text.replace(/[^0-9]/g, '').length;
+}
 
-  const n = Number(entry);
+/* ------------------------------------------------------------- formatting */
+
+/** True when a +/− at this position is a sign rather than an operation. */
+function isUnaryAt(tokens, index) {
+  if (index === 0) return true;
+  const before = tokens[index - 1];
+  return before.type === 'operator' || before.type === 'open';
+}
+
+export function formatTokens(tokens) {
+  let out = '';
+  tokens.forEach((token, index) => {
+    switch (token.type) {
+      case 'number':
+        out += formatNumber(token.text);
+        break;
+      case 'operator':
+        out += isUnaryAt(tokens, index)
+          ? OPERATORS[token.op]
+          : ` ${OPERATORS[token.op]} `;
+        break;
+      case 'open':
+        out += '(';
+        break;
+      case 'close':
+        out += ')';
+        break;
+      case 'percent':
+        out += '%';
+        break;
+      default:
+        break;
+    }
+  });
+  return out;
+}
+
+/** Render one number: grouped, sane length, sane exponents. */
+export function formatNumber(entry) {
+  const text = typeof entry === 'number' ? String(entry) : entry;
+  const n = Number(text);
   if (!Number.isFinite(n)) return 'Error';
 
-  const sign = entry.startsWith('-') ? '-' : '';
-  const body = sign ? entry.slice(1) : entry;
+  const sign = text.startsWith('-') ? '-' : '';
+  const body = sign ? text.slice(1) : text;
 
   // Plain notation whenever it fits. Mid-typing values keep their exact shape,
   // so "1.50" stays "1.50" and a lone "0." keeps its trailing point.
-  if (!/[eE]/.test(body) && significantDigits(body) <= MAX_DISPLAY_DIGITS) {
+  if (!/[eE]/.test(body) && significantDigits(body) <= 15) {
     const [intPart, decPart] = body.split('.');
     const grouped = groupDigits(intPart);
     return decPart === undefined ? sign + grouped : `${sign}${grouped}.${decPart}`;

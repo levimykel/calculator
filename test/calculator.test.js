@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Calculator, formatDisplay } from '../js/calculator.js';
+import { Calculator, formatNumber, formatTokens, valueOf, normalize } from '../js/calculator.js';
 
-/** Drive the calculator with a compact script: "12+3=" */
+/** Drive the calculator with a compact script: "2+3*(4-1)=" */
 function run(script) {
   const calc = new Calculator();
   for (const ch of script) {
@@ -12,136 +12,312 @@ function run(script) {
     else if (ch === '-') calc.operator('subtract');
     else if (ch === '*') calc.operator('multiply');
     else if (ch === '/') calc.operator('divide');
+    else if (ch === '(') calc.openParen();
+    else if (ch === ')') calc.closeParen();
+    else if (ch === 'p') calc.paren();
+    else if (ch === '~') calc.negate();
     else if (ch === '=') calc.equals();
     else if (ch === '%') calc.percent();
-    else if (ch === '~') calc.negate();
     else if (ch === '<') calc.backspace();
-    else if (ch === 'c') calc.clear();
+    else if (ch === 'c') calc.clearAll();
     else throw new Error(`unknown token ${ch}`);
   }
   return calc;
 }
 
-const shows = (script, expected) =>
-  assert.equal(run(script).entry, expected, `${script} should show ${expected}`);
+/** What the display shows. */
+const shown = (script) => run(script).state().expression;
+/** The live result under the expression, before pressing equals. */
+const preview = (script) => run(script).state().preview;
 
-test('arithmetic', () => {
-  shows('2+3=', '5');
-  shows('9-4=', '5');
-  shows('6*7=', '42');
-  shows('84/2=', '42');
-  shows('10/4=', '2.5');
+/** Compare against the number, ignoring the display's thousands separators. */
+const yields = (script, expected) =>
+  assert.equal(
+    shown(`${script}=`).replace(/,/g, ''),
+    String(expected),
+    `${script} should give ${expected}`
+  );
+
+test('operators no longer calculate as you type', () => {
+  const calc = run('2+3');
+  assert.equal(calc.state().expression, '2 + 3');
+  assert.equal(calc.state().committed, null, 'nothing is committed until equals');
+
+  const chained = run('2+3*4');
+  assert.equal(chained.state().expression, '2 + 3 × 4', 'the whole expression stays visible');
 });
 
-test('chained operations evaluate left to right as typed', () => {
-  shows('2+3*4=', '20');
-  shows('1+2+3+4=', '10');
+test('order of operations', () => {
+  yields('2+3*4', 14);           // not 20
+  yields('2*3+4', 10);
+  yields('100-10*2', 80);
+  yields('20/4+3', 8);
+  yields('2+10/5', 4);
+  yields('1+2*3+4*5', 27);
+});
+
+test('division and subtraction stay left-associative', () => {
+  yields('100/10/2', 5);
+  yields('20-5-3', 12);
+});
+
+test('parentheses override precedence', () => {
+  yields('(2+3)*4', 20);
+  yields('2*(3+4)', 14);
+  yields('(1+2)*(3+4)', 21);
+  yields('100/(2+3)', 20);
+});
+
+test('parentheses nest', () => {
+  yields('((2+3)*2)+1', 11);
+  yields('2*(3+(4*(5-3)))', 22);
+  assert.equal(run('((((1+1))))=').state().expression, '2');
+});
+
+test('unclosed parentheses are closed on evaluation', () => {
+  yields('2*(3+4', 14);
+  yields('((2+3', 5);
+  assert.equal(run('2*(3+4=').state().committed, '2 × (3 + 4)', 'the closers show in the committed expression');
+});
+
+test('a trailing operator is dropped rather than blocking evaluation', () => {
+  yields('12+', 12);
+  yields('2*3+', 6);
+  assert.equal(preview('12*'), 12);
+});
+
+test('a stray closing parenthesis is ignored', () => {
+  assert.equal(shown('2+3)'), '2 + 3');
+  assert.equal(shown(')))'), '');
+  assert.equal(shown('()'), '(', 'an empty group cannot be closed');
+});
+
+test('unary minus', () => {
+  yields('-5+8', 3);
+  yields('3*-2', -6);
+  yields('(-4)*2', -8);
+  yields('10-(-3)', 13);
+  assert.equal(shown('-5'), '−5', 'a leading minus renders tight against its number');
+  assert.equal(shown('3*-2'), '3 × −2');
+});
+
+test('a leading plus, times or divide is ignored', () => {
+  assert.equal(shown('+'), '');
+  assert.equal(shown('*'), '');
+  assert.equal(shown('/5'), '5');
+});
+
+test('pressing an operator twice replaces it', () => {
+  assert.equal(shown('5+*'), '5 × ');
+  assert.equal(shown('5+*/'), '5 ÷ ');
+  yields('5+*3', 15);
+  // Including two minuses: a repeated press reads as a correction, not as a
+  // double negative. "10 − −3" is still typeable as 10-(-3).
+  yields('10--3', 7);
+});
+
+test('a minus after x or / is kept as a sign', () => {
+  assert.equal(shown('5*-'), '5 × −');
+  yields('5*-3', -15);
+  yields('12/-4', -3);
+});
+
+test('implicit multiplication is made explicit as you type', () => {
+  assert.equal(shown('2('), '2 × (');
+  assert.equal(shown('(2+3)4'), '(2 + 3) × 4');
+  assert.equal(shown('(2)('), '(2) × (');
+  yields('2(3+4', 14);
+});
+
+test('the parser also accepts juxtaposition directly', () => {
+  // Belt and braces: a token list built without the UI's inserted × still works.
+  const tokens = [
+    { type: 'number', text: '2' },
+    { type: 'open' },
+    { type: 'number', text: '3' },
+    { type: 'operator', op: 'add' },
+    { type: 'number', text: '4' },
+    { type: 'close' },
+  ];
+  assert.equal(valueOf(tokens), 14);
+});
+
+test('percent is relative to the left-hand side for + and -', () => {
+  yields('200+10%', 220);
+  yields('200-10%', 180);
+  yields('80*50%', 40);
+  yields('50%', 0.5);
+  assert.equal(shown('200+10%'), '200 + 10%');
+});
+
+test('percent respects grouping', () => {
+  yields('(200+200)*50%', 200);
+  yields('100+(10+10)%', 120);
+});
+
+test('percent only applies where there is a value to apply it to', () => {
+  assert.equal(shown('%'), '');
+  assert.equal(shown('5+%'), '5 + ');
+});
+
+test('decimals', () => {
+  yields('1.5+2.5', 4);
+  yields('.1+.2', 0.3);
+  assert.equal(shown('1..5'), '1.5');
+  assert.equal(shown('.'), '0.');
 });
 
 test('float artifacts are cleaned up', () => {
-  shows('.1+.2=', '0.3');
-  shows('4.2*3=', '12.6');
+  yields('4.2*3', 12.6);
+  yields('1.1*3', 3.3);
+  yields('0.1+0.7', 0.8);
 });
 
-test('repeated equals repeats the last operation', () => {
-  shows('2+3==', '8');
-  shows('2*3===', '54');
+test('exact large integers survive', () => {
+  yields('987654321*123456', 121931851853376);
 });
 
-test('pressing an operator twice replaces it rather than stacking', () => {
-  const calc = run('5+');
+test('live preview updates while typing and hides when incomplete', () => {
+  assert.equal(preview('2+3'), 5);
+  assert.equal(preview('2+3*4'), 14);
+  assert.equal(preview('2*(3+4'), 14, 'an open group previews as if closed');
+  assert.equal(preview(''), null);
+  assert.equal(preview('('), null);
+  assert.equal(preview('5/0'), null, 'a preview that is not a finite number is withheld');
+});
+
+test('equals commits the expression alongside the result', () => {
+  const calc = run('2+3*4=');
+  assert.equal(calc.state().expression, '14');
+  assert.equal(calc.state().committed, '2 + 3 × 4');
+  assert.equal(calc.state().preview, null, 'no preview once committed');
+});
+
+test('a digit after a result starts a new expression', () => {
+  const calc = run('2+3=');
+  calc.digit('7');
+  assert.equal(calc.state().expression, '7');
+  assert.equal(calc.state().committed, null);
+});
+
+test('an operator after a result continues from it', () => {
+  const calc = run('2+3=');
   calc.operator('multiply');
-  calc.digit('3');
+  calc.digit('4');
+  assert.equal(calc.state().expression, '5 × 4');
   calc.equals();
-  assert.equal(calc.entry, '15');
+  assert.equal(calc.state().expression, '20');
 });
 
-test('equals with no pending operation is a no-op', () => {
-  shows('7=', '7');
+test('an opening parenthesis after a result starts fresh', () => {
+  const calc = run('2+3=');
+  calc.openParen();
+  assert.equal(calc.state().expression, '(');
 });
 
-test('decimal point handling', () => {
-  shows('1.5', '1.5');
-  shows('..5', '0.5');
-  shows('1..5', '1.5');
-  shows('.', '0.');
-  assert.equal(formatDisplay(run('.').entry), '0.');
+test('equals on an already-committed result does nothing', () => {
+  const calc = run('2+3==');
+  assert.equal(calc.state().expression, '5');
 });
 
-test('leading zeros are not accumulated', () => {
-  shows('000', '0');
-  shows('007', '7');
+test('equals on an empty expression does nothing', () => {
+  assert.equal(shown('='), '');
 });
 
-test('negate toggles sign but leaves a bare zero alone', () => {
-  shows('5~', '-5');
-  shows('5~~', '5');
-  shows('~', '0');
-  shows('3~+8=', '5');
+test('backspace removes one character or one token at a time', () => {
+  assert.equal(shown('123<'), '12');
+  assert.equal(shown('12+<'), '12');
+  assert.equal(shown('12+3<<'), '12');
+  assert.equal(shown('(2+3)<'), '(2 + 3');
+  assert.equal(shown('2(<'), '2 × ', 'the inserted × is a token of its own');
+  assert.equal(shown('123<<<'), '');
 });
 
-test('percent is relative to the pending left-hand side for + and -', () => {
-  shows('200+10%=', '220');
-  shows('200-10%=', '180');
-  shows('50%', '0.5');
-  shows('80*50%=', '40');
+test('backspace after a result clears it rather than editing the digits', () => {
+  const calc = run('2+3=<');
+  assert.equal(calc.state().expression, '');
+  assert.equal(calc.state().committed, null);
 });
 
-test('backspace removes the last typed character only', () => {
-  shows('123<', '12');
-  shows('123<<<', '0');
-  shows('5~<', '0');
-  shows('2+3=<', '5'); // results are not editable
-});
-
-test('clear acts as C then AC', () => {
-  const calc = run('5+3');
-  calc.clear();
-  assert.equal(calc.entry, '0');
-  calc.digit('4').equals();
-  assert.equal(calc.entry, '9', 'C keeps the pending 5 +');
-
-  const calc2 = run('5+3');
-  calc2.clear();
-  calc2.clear(); // now AC
-  calc2.digit('4').equals();
-  assert.equal(calc2.entry, '4');
-});
-
-test('divide by zero errors and recovers on the next input', () => {
+test('divide by zero errors and the next keypress recovers', () => {
   const calc = run('5/0=');
-  assert.equal(calc.entry, 'Error');
   assert.equal(calc.state().errored, true);
   calc.digit('7');
-  assert.equal(calc.entry, '7');
   assert.equal(calc.state().errored, false);
+  assert.equal(calc.state().expression, '7');
 });
 
-test('entry length is capped', () => {
+test('clear resets everything', () => {
+  const calc = run('2+3*(4c');
+  assert.equal(calc.state().expression, '');
+  assert.equal(calc.state().isEmpty, true);
+});
+
+test('open depth is reported for the UI', () => {
+  assert.equal(run('((2').state().openDepth, 2);
+  assert.equal(run('((2)').state().openDepth, 1);
+  assert.equal(run('2+3').state().openDepth, 0);
+});
+
+test('digits per number are capped, but the expression can hold many numbers', () => {
   const calc = run('1234567890123456789');
-  assert.equal(calc.entry.replace(/[^0-9]/g, '').length, 12);
+  assert.equal(calc.state().expression.replace(/[^0-9]/g, '').length, 12);
+  const long = run('1+1+1+1+1+1+1+1+1+1');
+  assert.equal(long.equals().state().expression, '10');
 });
 
-test('expression line tracks the pending operation', () => {
-  assert.equal(run('12+').state().expression, '12 +');
-  assert.equal(run('12+5').state().expression, '12 + 5');
-  assert.equal(run('12+5=').state().expression, '');
+test('normalize leaves a complete expression untouched', () => {
+  const tokens = run('2+3').tokens;
+  assert.deepEqual(normalize(tokens), tokens);
 });
 
-test('display formatting groups thousands', () => {
-  assert.equal(formatDisplay('1234567'), '1,234,567');
-  assert.equal(formatDisplay('-9876.5'), '-9,876.5');
-  assert.equal(formatDisplay('0.5'), '0.5');
-  assert.equal(formatDisplay('1.50'), '1.50', 'trailing zeros survive while typing');
-  assert.equal(formatDisplay('Error'), 'Error');
+test('numbers are grouped for display', () => {
+  assert.equal(formatNumber('1234567'), '1,234,567');
+  assert.equal(formatNumber('-9876.5'), '-9,876.5');
+  assert.equal(formatNumber('1.50'), '1.50', 'trailing zeros survive while typing');
+  assert.equal(shown('1234567+1'), '1,234,567 + 1');
 });
 
-test('long but exact results stay in plain notation', () => {
-  assert.equal(formatDisplay(run('987654321*123456=').entry), '121,931,851,853,376');
-  assert.equal(formatDisplay(run('1/3=').entry), '0.333333333333333');
-});
-
-test('display falls back to exponential for huge numbers', () => {
+test('very large results fall back to exponential', () => {
   const calc = run('99999999999*99999999999=');
-  assert.match(formatDisplay(calc.entry), /e\d+$/);
+  assert.match(calc.state().expression, /e\d+$/);
+});
+
+test('formatTokens round-trips what was typed', () => {
+  assert.equal(formatTokens(run('12+(3*4)-5%').tokens), '12 + (3 × 4) − 5%');
+});
+
+test('the single parenthesis key opens or closes as appropriate', () => {
+  assert.equal(shown('p'), '(');
+  assert.equal(shown('p2'), '(2');
+  assert.equal(shown('p2p'), '(2)');
+  assert.equal(shown('p2pp'), '(2) × (', 'with nothing left to close it opens again');
+  assert.equal(shown('p2+p3pp'), '(2 + (3))');
+  assert.equal(shown('2+p'), '2 + (');
+  assert.equal(shown('p2+p'), '(2 + (', 'it cannot close a group mid-operator');
+  yields('p2+3p*4', 20);
+});
+
+test('sign toggling works inside an expression', () => {
+  assert.equal(shown('5~'), '−5');
+  assert.equal(shown('5~~'), '5');
+  assert.equal(shown('12+5~'), '12 + −5');
+  assert.equal(shown('12+5~~'), '12 + 5');
+  assert.equal(shown('12-5~'), '12 − −5');
+  yields('12+5~', 7);
+  yields('12-5~', 17);
+  yields('5~*3', -15);
+});
+
+test('sign toggling only applies to a number', () => {
+  assert.equal(shown('~'), '');
+  assert.equal(shown('5+~'), '5 + ');
+  assert.equal(shown('p2p~'), '(2)', 'a closed group is left alone');
+});
+
+test('sign toggling a result negates it', () => {
+  const calc = run('2+3=');
+  calc.negate();
+  assert.equal(calc.state().expression, '−5');
+  assert.equal(calc.equals().state().expression, '-5');
 });
