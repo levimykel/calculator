@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Calcutron</title>
+<meta name="description" content="Calcutron — a friendly little calculator that works offline.">
+<meta name="theme-color" content="#0b1020">
+<meta name="color-scheme" content="dark">
+
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/calcutron.svg" type="image/svg+xml">
+<link rel="icon" href="icons/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+
+<!-- Home-screen install on iOS -->
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Calcutron">
+
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <img class="mark" src="icons/calcutron.svg" alt="" width="32" height="32">
+    <h1>Calcutron</h1>
+  </header>
+
+  <section class="display" aria-live="polite" aria-atomic="true">
+    <div class="expression" id="expression" aria-hidden="true"></div>
+    <output class="result" id="result" aria-label="Result">0</output>
+  </section>
+
+  <div class="keypad" id="keypad">
+    <button class="key key--fn" data-action="clear" id="clearKey" aria-label="All clear">AC</button>
+    <button class="key key--fn" data-action="negate" aria-label="Toggle sign">±</button>
+    <button class="key key--fn" data-action="percent" aria-label="Percent">%</button>
+    <button class="key key--op" data-action="operator" data-op="divide" aria-label="Divide">÷</button>
+
+    <button class="key" data-action="digit" data-digit="7">7</button>
+    <button class="key" data-action="digit" data-digit="8">8</button>
+    <button class="key" data-action="digit" data-digit="9">9</button>
+    <button class="key key--op" data-action="operator" data-op="multiply" aria-label="Multiply">×</button>
+
+    <button class="key" data-action="digit" data-digit="4">4</button>
+    <button class="key" data-action="digit" data-digit="5">5</button>
+    <button class="key" data-action="digit" data-digit="6">6</button>
+    <button class="key key--op" data-action="operator" data-op="subtract" aria-label="Subtract">−</button>
+
+    <button class="key" data-action="digit" data-digit="1">1</button>
+    <button class="key" data-action="digit" data-digit="2">2</button>
+    <button class="key" data-action="digit" data-digit="3">3</button>
+    <button class="key key--op" data-action="operator" data-op="add" aria-label="Add">+</button>
+
+    <button class="key key--zero" data-action="digit" data-digit="0">0</button>
+    <button class="key" data-action="decimal" aria-label="Decimal point">.</button>
+    <button class="key key--eq" data-action="equals" aria-label="Equals">=</button>
+  </div>
+</div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
