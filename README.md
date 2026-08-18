@@ -245,11 +245,16 @@ reference to the DOM, which is what makes it straightforward to test.
 - **Park a short history list with `margin-top: auto`, not `justify-content`.**
   Flex end-alignment pushes overflow out of the top of a scroll container,
   where it cannot be scrolled back to.
-- **The bottom safe-area inset is capped at 14px** (`--safe-bottom`). An
-  installed iOS app already keeps the home-indicator strip clear, so honouring
-  the whole inset on top of that left a visible band of dead space beneath the
-  keypad. 14px keeps the bottom row comfortable without wasting the rest. The
-  insets are CSS variables so the fit tests can stand in real device values and
-  check the layout against them — Playwright reports every inset as zero.
+- **Two separate things push the keypad off the bottom on iOS, and both had
+  to go.** The app is `position: fixed; inset: 0` rather than `height: 100dvh`,
+  because an installed app can report a `dvh` shorter than the area it paints;
+  and `--safe-bottom` drops to `0` under `@media (display-mode: standalone)`,
+  because iOS already reserves the home-indicator strip there, so honouring the
+  inset again is pure dead space. In a browser tab the inset is real and is
+  honoured, capped at 14px. `.keypad` also carries `margin-top: auto` so no
+  arrangement of the bands above it can leave slack underneath.
+- **Safe areas are CSS variables** so the fit tests can substitute real device
+  values and check the layout against them — Playwright reports every inset as
+  zero, which is why a whole class of iOS spacing bugs was invisible to them.
 - **Icons** are generated from `icons/calcutron.svg`. If the artwork changes,
   re-export the PNGs at 32, 180, 192, and 512 px, plus the maskable 512 variant.
