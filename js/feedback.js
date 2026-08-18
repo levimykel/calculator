@@ -1,28 +1,57 @@
 /**
  * Key sounds, synthesized with the Web Audio API.
  *
- * Nothing is loaded from disk: every sound is a short shaped tone plus a
- * filtered noise transient, which keeps the app tiny and keeps the feedback
- * working offline. The voices are deliberately quiet and short — the point is
- * a tactile "tock", not a beep.
+ * Nothing is loaded from disk: every sound is built from a filtered noise
+ * transient plus a short low "body", which is what a mechanical switch
+ * actually sounds like — a click with a bit of weight behind it, not a tone.
+ * That keeps the app tiny and keeps the feedback working offline.
+ *
+ * Everything is deliberately quiet. These sit under the sound of a fingertip
+ * on glass; they should register without ever being the loudest thing around.
  */
 
 const STORAGE_KEY = 'calcutron.sound';
 
-const VOICES = {
-  // freq -> bend gives the little downward pitch drop that reads as a click.
-  key:      { freq: 540, bend: 400, dur: 0.05, gain: 0.075, type: 'triangle', noise: 0.05 },
-  fn:       { freq: 640, bend: 470, dur: 0.05, gain: 0.07, type: 'triangle', noise: 0.045 },
-  operator: { freq: 720, bend: 540, dur: 0.05, gain: 0.07, type: 'triangle', noise: 0.045 },
-  // Equals resolves rather than clicks: a soft C5 with a G5 just behind it.
-  equals:   { freq: 523.25, dur: 0.14, gain: 0.075, type: 'sine', noise: 0.03, second: { freq: 783.99, delay: 0.045, dur: 0.18, gain: 0.06 } },
+/** Master trim. Lower this to make every voice quieter at once. */
+const MASTER_GAIN = 0.45;
+
+/**
+ * A voice is a click (bandpassed noise) plus a body (a brief low sine).
+ * `tick` adds a second, smaller click just behind the first — the sound of a
+ * switch bottoming out and releasing.
+ */
+export const VOICES = {
+  key: {
+    click: { freq: 2200, q: 1.0, gain: 0.26, decay: 0.020 },
+    body: { freq: 190, gain: 0.022, decay: 0.032 },
+  },
+  fn: {
+    click: { freq: 2700, q: 1.2, gain: 0.22, decay: 0.017 },
+    body: { freq: 240, gain: 0.018, decay: 0.028 },
+  },
+  operator: {
+    click: { freq: 3100, q: 1.3, gain: 0.24, decay: 0.016 },
+    body: { freq: 265, gain: 0.018, decay: 0.026 },
+  },
+  // Heavier and lower than the rest, so a result lands with some finality.
+  equals: {
+    click: { freq: 1500, q: 0.9, gain: 0.24, decay: 0.024 },
+    body: { freq: 120, gain: 0.028, decay: 0.060 },
+    tick: { freq: 2100, q: 1.1, gain: 0.14, decay: 0.012, delay: 0.032 },
+  },
 };
+
+/* Click gains look large next to the body gains because a narrow bandpass
+   throws away most of the noise it is given — roughly 70% of it at these
+   settings. The numbers that matter are the rendered peaks, which the test
+   suite measures and pins. */
 
 let ctx = null;
 let master = null;
-let noise = null;
 let enabled = readPreference();
 let broken = false;
+
+const noiseBuffers = new WeakMap();
 
 function readPreference() {
   try {
@@ -46,9 +75,70 @@ export function setSoundEnabled(value) {
   if (value) ensureContext();
 }
 
+/** White noise, made once per context and shared by every click. */
+function noiseFor(audio) {
+  let buffer = noiseBuffers.get(audio);
+  if (buffer) return buffer;
+
+  const frames = Math.floor(audio.sampleRate * 0.12);
+  buffer = audio.createBuffer(1, frames, audio.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < frames; i += 1) data[i] = Math.random() * 2 - 1;
+
+  noiseBuffers.set(audio, buffer);
+  return buffer;
+}
+
 /**
- * Build the audio graph. Must be called from inside a user gesture the first
- * time, which is why it happens on the first key press rather than at load.
+ * Build one voice onto any context. Kept separate from playback so the sounds
+ * can be rendered offline and measured rather than only listened to.
+ */
+export function buildVoice(audio, destination, name, at) {
+  const voice = VOICES[name] ?? VOICES.key;
+  click(audio, destination, at, voice.click);
+  if (voice.tick) click(audio, destination, at + voice.tick.delay, voice.tick);
+  if (voice.body) body(audio, destination, at, voice.body);
+}
+
+function click(audio, destination, at, { freq, q, gain, decay }) {
+  const src = audio.createBufferSource();
+  const filter = audio.createBiquadFilter();
+  const amp = audio.createGain();
+
+  src.buffer = noiseFor(audio);
+  // Bandpass rather than lowpass: the narrow band is what reads as a
+  // switch click instead of a dull thud or a hiss.
+  filter.type = 'bandpass';
+  filter.frequency.value = freq;
+  filter.Q.value = q;
+
+  // No attack ramp at all — the abruptness is the click.
+  amp.gain.setValueAtTime(gain, at);
+  amp.gain.exponentialRampToValueAtTime(0.00001, at + decay);
+
+  src.connect(filter).connect(amp).connect(destination);
+  src.start(at);
+  src.stop(at + decay + 0.01);
+}
+
+function body(audio, destination, at, { freq, gain, decay }) {
+  const osc = audio.createOscillator();
+  const amp = audio.createGain();
+
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(freq, at);
+
+  amp.gain.setValueAtTime(gain, at);
+  amp.gain.exponentialRampToValueAtTime(0.00001, at + decay);
+
+  osc.connect(amp).connect(destination);
+  osc.start(at);
+  osc.stop(at + decay + 0.01);
+}
+
+/**
+ * Build the live audio graph. Must happen inside a user gesture the first
+ * time, which is why it is triggered by the first key press rather than load.
  */
 function ensureContext() {
   if (ctx || broken) return ctx;
@@ -63,17 +153,8 @@ function ensureContext() {
   }
 
   master = ctx.createGain();
-  master.gain.value = 0.9;
+  master.gain.value = MASTER_GAIN;
   master.connect(ctx.destination);
-
-  // One short burst of white noise, reused for every click transient.
-  const frames = Math.floor(ctx.sampleRate * 0.03);
-  noise = ctx.createBuffer(1, frames, ctx.sampleRate);
-  const data = noise.getChannelData(0);
-  for (let i = 0; i < frames; i += 1) {
-    data[i] = (Math.random() * 2 - 1) * (1 - i / frames);
-  }
-
   return ctx;
 }
 
@@ -89,46 +170,5 @@ export function play(voiceName) {
   if (!audio) return;
   if (audio.state === 'suspended') audio.resume().catch(() => {});
 
-  const voice = VOICES[voiceName] ?? VOICES.key;
-  const now = audio.currentTime;
-
-  tone(now, voice);
-  if (voice.second) tone(now + voice.second.delay, { ...voice, ...voice.second, noise: 0 });
-  if (voice.noise) transient(now, voice.noise);
-}
-
-function tone(at, { freq, bend, dur, gain, type }) {
-  const osc = ctx.createOscillator();
-  const amp = ctx.createGain();
-
-  osc.type = type ?? 'triangle';
-  osc.frequency.setValueAtTime(freq, at);
-  if (bend) osc.frequency.exponentialRampToValueAtTime(bend, at + dur);
-
-  // Tiny attack avoids the click of starting at full amplitude; the
-  // exponential tail is what makes it read as soft rather than digital.
-  amp.gain.setValueAtTime(0.0001, at);
-  amp.gain.exponentialRampToValueAtTime(gain, at + 0.004);
-  amp.gain.exponentialRampToValueAtTime(0.0001, at + dur);
-
-  osc.connect(amp).connect(master);
-  osc.start(at);
-  osc.stop(at + dur + 0.02);
-}
-
-function transient(at, gain) {
-  const src = ctx.createBufferSource();
-  const amp = ctx.createGain();
-  const filter = ctx.createBiquadFilter();
-
-  src.buffer = noise;
-  filter.type = 'lowpass';
-  filter.frequency.value = 2400;
-
-  amp.gain.setValueAtTime(gain, at);
-  amp.gain.exponentialRampToValueAtTime(0.0001, at + 0.028);
-
-  src.connect(filter).connect(amp).connect(master);
-  src.start(at);
-  src.stop(at + 0.03);
+  buildVoice(audio, master, voiceName, audio.currentTime);
 }

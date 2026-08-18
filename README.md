@@ -12,8 +12,8 @@ full screen and offline, like a native app.
 - `AC` / `C` — the key switches itself depending on whether there is an entry to clear
 - Swipe across the display to delete the last digit
 - Full keyboard support, so it is usable with an iPad keyboard or on a desktop
-- Soft key sounds, with a warmer two-note chime on `=`; mutable from the speaker
-  button, and the choice is remembered
+- Subtle mechanical key clicks, with a weightier one on `=`; mutable from the
+  speaker button, and the choice is remembered
 - Light haptic feedback on each press (see the caveat below)
 - Works with no network once installed
 - Shows its version, and updates on your say-so rather than mid-calculation
@@ -65,18 +65,41 @@ The service worker needs its own copy rather than importing one: browsers decide
 whether an update exists by byte-comparing the worker file itself, so its
 contents have to change each release. A test fails if the copies drift.
 
+## Key sounds
+
+Every sound is synthesized at press time — there are no audio files to download,
+and the feedback keeps working offline. A voice is a burst of bandpassed noise
+(the click) plus a brief low sine (the body), which is roughly how a mechanical
+switch behaves. `=` gets a lower, longer version with a second tick behind it.
+
+They are deliberately quiet, sitting under the sound of a fingertip on glass.
+`MASTER_GAIN` in `js/feedback.js` trims all of them at once; individual voices
+are in the `VOICES` table.
+
+Because "quieter" and "more mechanical" are easy to get wrong by ear, the tests
+render each voice through an `OfflineAudioContext` and measure it: peak, RMS,
+how long it stays audible, and the ratio of energy above 1.2 kHz to energy below
+500 Hz. That last number is what separates a click from a tone — the keys sit
+around 2.4, and a failing change would show up as a number, not a vibe.
+
 ## A note on haptics
 
 Safari does not implement the Vibration API on any platform, so
 `navigator.vibrate` does not exist on an iPhone or iPad. The only haptic Safari
 exposes to a web app is a side effect of toggling a
 `<input type="checkbox" switch>` (Safari 17.4+), and that is what `js/haptics.js`
-drives on iOS. It is a side effect Apple never documented as an API, so treat it
-as best-effort — **this path has not been verified on real hardware**. Android,
-where `navigator.vibrate` exists, uses the real API.
+drives on iOS. Android, where `navigator.vibrate` exists, uses the real API.
 
-If a future iOS release breaks the trick, presses simply stop buzzing; nothing
-else is affected.
+The switch has to stay a genuine native control for this to work, so it keeps
+its default appearance and natural size and is hidden by clipping it inside a
+1px box. Restyling it — an `appearance: none`, or forcing its width and height —
+replaces the native control and silently kills the haptic.
+
+This remains best-effort: it is an undocumented side effect rather than an API,
+and it **cannot be verified without real hardware**. If it stops working,
+presses simply stop buzzing and nothing else is affected. Worth checking the
+phone's Settings → Sounds & Haptics → System Haptics before concluding it is
+broken.
 
 ## Layout
 

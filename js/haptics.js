@@ -14,6 +14,7 @@
 
 let iosSwitch = null;
 let iosLabel = null;
+let host = null;
 
 const supportsVibrate = typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function';
 
@@ -49,25 +50,30 @@ function toggleSwitch() {
 
 function build() {
   try {
+    // The switch must render as a real, native switch control — that native
+    // control is what produces the haptic. So it keeps its default appearance
+    // and its natural size, and is hidden by clipping it inside a 1px box
+    // rather than by restyling or resizing the control itself.
+    //
+    // The first version of this set `appearance: none` and forced the switch
+    // to 1x1, which stripped the native control and produced no haptic at all.
+    host = document.createElement('div');
+    host.setAttribute('aria-hidden', 'true');
+    host.style.cssText =
+      'position:fixed;bottom:0;left:0;width:1px;height:1px;overflow:hidden;' +
+      'opacity:0.01;pointer-events:none;z-index:-1;';
+
     iosSwitch = document.createElement('input');
     iosSwitch.type = 'checkbox';
     iosSwitch.setAttribute('switch', '');
     iosSwitch.id = 'calcutron-haptic-switch';
     iosSwitch.tabIndex = -1;
-    iosSwitch.setAttribute('aria-hidden', 'true');
 
     iosLabel = document.createElement('label');
     iosLabel.setAttribute('for', iosSwitch.id);
-    iosLabel.setAttribute('aria-hidden', 'true');
 
-    // Must stay rendered — `display: none` or `hidden` kills the haptic — so
-    // it is parked offscreen and made untouchable instead.
-    for (const el of [iosSwitch, iosLabel]) {
-      el.style.cssText =
-        'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;pointer-events:none;appearance:none;-webkit-appearance:none;';
-    }
-
-    document.body.append(iosSwitch, iosLabel);
+    host.append(iosSwitch, iosLabel);
+    document.body.append(host);
   } catch {
     iosSwitch = null;
     iosLabel = null;
