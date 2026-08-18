@@ -17,6 +17,17 @@
   --muted: #8b97bd;
   --radius: 20px;
   --gap: 10px;
+
+  /* Safe areas, as variables so they can be tuned in one place — and
+     overridden in tests to check the layout against a real device's insets.
+     The bottom one is capped: iOS reserves the home-indicator strip itself in
+     an installed app, so honouring the full inset on top of that leaves a
+     visible band of dead space under the keypad. 14px keeps the bottom row
+     clear of the indicator without wasting the rest. */
+  --safe-top: env(safe-area-inset-top);
+  --safe-right: env(safe-area-inset-right);
+  --safe-left: env(safe-area-inset-left);
+  --safe-bottom: min(env(safe-area-inset-bottom), 14px);
 }
 
 * { box-sizing: border-box; }
@@ -51,10 +62,10 @@ body {
   gap: var(--gap);
   background: radial-gradient(120% 60% at 50% 0%, var(--bg-top) 0%, var(--bg) 60%);
   padding:
-    calc(env(safe-area-inset-top) + 10px)
-    calc(env(safe-area-inset-right) + 14px)
-    calc(env(safe-area-inset-bottom) + 12px)
-    calc(env(safe-area-inset-left) + 14px);
+    calc(var(--safe-top) + 10px)
+    calc(var(--safe-right) + 14px)
+    var(--safe-bottom)
+    calc(var(--safe-left) + 14px);
 }
 
 /* Older iOS without dvh support still needs a full-height app. */
@@ -296,7 +307,7 @@ body {
   flex-direction: column;
   justify-content: flex-end;
   gap: 2px;
-  padding: 10px 4px 8px;
+  padding: 8px 4px 6px;
 }
 
 /* Result large, expression small — the same shape as a history row, so the
@@ -344,7 +355,7 @@ body {
   grid-template-columns: repeat(4, 1fr);
   grid-template-rows: repeat(6, 1fr);
   gap: 1px;
-  height: min(56dvh, 440px);
+  height: min(60dvh, 470px);
   background: var(--hairline);
   border-radius: var(--radius);
   overflow: hidden;

@@ -197,7 +197,8 @@ as small chips so a long expression stays scannable.
 - **Tap a row** to drop its result into whatever you are typing. Landing on a
   closed group or another number inserts a `×` first.
 - **Star a row** — from the row itself or the `☆` key, which acts on the most
-  recent calculation.
+  recent calculation. A star means *keep this*: it is the only thing the star
+  does, and it does it in two ways.
 - **Clear** removes everything unstarred. Starred rows stay, which is the point
   of starring; unstar one first if it should go.
 - Rows persist in `localStorage` and survive a relaunch. The list holds 100;
@@ -244,5 +245,11 @@ reference to the DOM, which is what makes it straightforward to test.
 - **Park a short history list with `margin-top: auto`, not `justify-content`.**
   Flex end-alignment pushes overflow out of the top of a scroll container,
   where it cannot be scrolled back to.
+- **The bottom safe-area inset is capped at 14px** (`--safe-bottom`). An
+  installed iOS app already keeps the home-indicator strip clear, so honouring
+  the whole inset on top of that left a visible band of dead space beneath the
+  keypad. 14px keeps the bottom row comfortable without wasting the rest. The
+  insets are CSS variables so the fit tests can stand in real device values and
+  check the layout against them — Playwright reports every inset as zero.
 - **Icons** are generated from `icons/calcutron.svg`. If the artwork changes,
   re-export the PNGs at 32, 180, 192, and 512 px, plus the maskable 512 variant.
