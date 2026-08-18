@@ -185,17 +185,9 @@ body {
 /* A committed result reads as an answer rather than as more input. */
 .expression.is-result { color: var(--eq); }
 
-.readout {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  min-height: 26px;
-}
-
 .preview {
-  flex: 1 1 auto;
   text-align: right;
+  min-height: 26px;
   font-size: clamp(0.9rem, 3.6vw, 1.15rem);
   color: var(--muted);
   white-space: nowrap;
@@ -204,36 +196,6 @@ body {
 }
 
 .preview::-webkit-scrollbar { display: none; }
-
-.backspace {
-  flex: 0 0 auto;
-  -webkit-appearance: none;
-  appearance: none;
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  padding: 4px 8px 4px 0;
-  margin: -4px 0;
-  cursor: pointer;
-  display: grid;
-  place-items: center;
-  touch-action: none;
-  transition: color 130ms ease-out, opacity 130ms ease-out;
-}
-
-.backspace svg {
-  width: 24px;
-  height: 24px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.8;
-  stroke-linejoin: round;
-  stroke-linecap: round;
-}
-
-.backspace:active,
-.backspace.is-pressed { color: var(--accent); transition-duration: 0s; }
-.backspace[disabled] { opacity: 0.3; cursor: default; }
 
 .keypad {
   flex: 0 0 auto;
@@ -273,6 +235,21 @@ body {
 
 .key--fn { background: var(--key-fn); font-size: clamp(1.2rem, 5vw, 1.6rem); }
 .key--fn[data-action="paren"] { letter-spacing: -0.06em; }
+
+/* The bottom-left key carries both faces; only one is ever shown. */
+.key--clear { display: grid; place-items: center; }
+.key--clear[data-mode="clear"] .key__glyph,
+.key--clear[data-mode="back"] .key__label { display: none; }
+
+.key__glyph {
+  width: 1.5em;
+  height: 1.5em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
 .key--fn:active, .key--fn.is-pressed { background: var(--key-fn-press); }
 
 .key--op { background: var(--accent); color: #24160a; font-size: clamp(1.6rem, 7vw, 2.2rem); }
@@ -313,8 +290,7 @@ body {
   .expression[data-len="md"] { font-size: clamp(1.4rem, 5.5vh, 2rem); }
   .expression[data-len="sm"] { font-size: clamp(1.15rem, 4.5vh, 1.7rem); }
   .expression[data-len="xs"] { font-size: clamp(1rem, 3.8vh, 1.4rem); }
-  .readout { min-height: 20px; }
-  .backspace svg { width: 20px; height: 20px; }
+  .preview { min-height: 18px; font-size: 0.85rem; }
 
   .keypad {
     flex: 1 1 auto;

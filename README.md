@@ -14,7 +14,8 @@ full screen and offline, like a native app.
   closes depending on where you are
 - A live preview of the result under the expression as you type
 - The usual four operations, plus `%`, `±`, and a decimal point
-- Backspace in the display, or swipe across it
+- One bottom-left key that deletes while there is something to delete and
+  clears everything otherwise; swiping across the display also deletes
 - Full keyboard support, so it is usable with an iPad keyboard or on a desktop
 - Subtle mechanical key clicks, with a weightier one on `=`. The speaker button
   cycles soft / loud / off, and the choice is remembered
@@ -30,7 +31,7 @@ No build step and no dependencies — it is plain HTML, CSS, and ES modules.
 ```sh
 npm start          # serves the app at http://localhost:8080
 npm test           # runs the test suite
-npm run set-version 2.1.0   # bumps the version everywhere it appears
+npm run set-version 2.2.0   # bumps the version everywhere it appears
 ```
 
 Opening `index.html` directly from the filesystem will not work: ES modules and
@@ -154,6 +155,10 @@ A few behaviours that are easy to get wrong, and are pinned by tests:
   fraction, so `80 × 50%` is 40.
 - **`±` inserts a sign token** rather than editing digits, so `12 + −5` parses
   through the same path as a minus you typed.
+- **The bottom-left key is backspace or AC depending on state.** It deletes
+  while an expression is being typed, and clears when there is nothing to
+  delete. A committed result and an error both read as AC, since neither is
+  editable a character at a time. The physical Backspace key always deletes.
 - **Juxtaposition means multiplication.** The keypad inserts a visible `×` when
   you type `2(`, and the parser accepts the bare form too.
 

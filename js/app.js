@@ -6,7 +6,7 @@ import { initUpdates, STATUS } from './update.js';
 const calc = new Calculator();
 const expressionEl = document.getElementById('expression');
 const previewEl = document.getElementById('preview');
-const backspaceKey = document.getElementById('backspaceKey');
+const clearKey = document.getElementById('clearKey');
 const keypad = document.getElementById('keypad');
 const soundToggle = document.getElementById('soundToggle');
 const versionChip = document.getElementById('versionChip');
@@ -22,6 +22,7 @@ for (const key of keypad.querySelectorAll('.key')) {
 
 let lastExpression = null;
 let lastPreview = null;
+let lastClearMode = null;
 
 function render() {
   const state = calc.state();
@@ -54,7 +55,20 @@ function render() {
 
   expressionEl.classList.toggle('is-error', state.errored);
   expressionEl.classList.toggle('is-result', state.committed !== null);
-  backspaceKey.disabled = state.isEmpty && state.committed === null && !state.errored;
+
+  // The bottom-left key deletes while there is something to delete, and is a
+  // full clear otherwise. A committed result and an error both reset wholesale
+  // rather than being editable, so those read as AC too.
+  const mode = canBackspace(state) ? 'back' : 'clear';
+  if (mode !== lastClearMode) {
+    clearKey.dataset.mode = mode;
+    clearKey.setAttribute('aria-label', mode === 'back' ? 'Delete' : 'All clear');
+    lastClearMode = mode;
+  }
+}
+
+function canBackspace(state) {
+  return !state.isEmpty && state.committed === null && !state.errored;
 }
 
 /**
@@ -87,6 +101,10 @@ function perform(action, dataset = {}) {
     case 'negate': calc.negate(); break;
     case 'percent': calc.percent(); break;
     case 'paren': calc.paren(); break;
+    case 'clearOrBack':
+      if (canBackspace(calc.state())) calc.backspace();
+      else calc.clearAll();
+      break;
     case 'openParen': calc.openParen(); break;
     case 'closeParen': calc.closeParen(); break;
     case 'backspace': calc.backspace(); break;
@@ -106,7 +124,9 @@ function activate(action, dataset, withHaptics) {
    browser has decided the touch was not a scroll or a double-tap, which is
    what made the keypad feel a beat behind the finger. */
 let lastPointerAt = 0;
-let pressedKey = null;
+// Keyed by pointer id: two fingers on two keys means two live presses, and
+// releasing one must not leave the other stuck looking pressed.
+const pressedKeys = new Map();
 
 keypad.addEventListener('pointerdown', (event) => {
   if (event.button > 0) return;
@@ -116,7 +136,7 @@ keypad.addEventListener('pointerdown', (event) => {
 
   // Safari only applies :active on touch under specific conditions, so the
   // pressed look is driven from here instead of relying on it.
-  pressedKey = key;
+  pressedKeys.set(event.pointerId, key);
   key.classList.add('is-pressed');
 
   warmUp();
@@ -125,10 +145,12 @@ keypad.addEventListener('pointerdown', (event) => {
 
 /* Listened for on the window so a finger that slides off a key still releases
    it, rather than leaving the key stuck looking pressed. */
-function releaseKey() {
-  if (!pressedKey) return;
-  pressedKey.classList.remove('is-pressed');
-  pressedKey = null;
+function releaseKey(event) {
+  const key = pressedKeys.get(event.pointerId);
+  if (key) {
+    key.classList.remove('is-pressed');
+    pressedKeys.delete(event.pointerId);
+  }
 }
 
 window.addEventListener('pointerup', releaseKey, { passive: true });
@@ -141,18 +163,6 @@ keypad.addEventListener('click', (event) => {
   if (!key) return;
   if (event.timeStamp - lastPointerAt < 700) return;
   activate(key.dataset.action, key.dataset, false);
-});
-
-backspaceKey.addEventListener('pointerdown', (event) => {
-  if (event.button > 0 || backspaceKey.disabled) return;
-  lastPointerAt = event.timeStamp;
-  warmUp();
-  activate('backspace', {}, true);
-}, { passive: true });
-
-backspaceKey.addEventListener('click', (event) => {
-  if (event.timeStamp - lastPointerAt < 700) return;
-  activate('backspace', {}, false);
 });
 
 /* Keyboard support, for the iPad's hardware keyboard and for desktop. */
@@ -209,8 +219,8 @@ function flash(action, payload) {
       ? keysByAction.get(`op:${payload.op}`)
       : action === 'openParen' || action === 'closeParen'
         ? keysByAction.get('paren')
-        : action === 'backspace'
-          ? backspaceKey
+        : action === 'backspace' || action === 'clearAll'
+          ? clearKey
           : keysByAction.get(action);
 
   if (!key) return;

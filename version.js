@@ -1,4 +1,4 @@
 /* Single source of truth for the app version.
    A classic script on purpose: the page and the service worker both read it,
    and importScripts() in a worker cannot load an ES module. */
-self.APP_VERSION = '2.0.0';
+self.APP_VERSION = '2.1.0';
