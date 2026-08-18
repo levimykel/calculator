@@ -1,10 +1,28 @@
 import { Calculator, formatDisplay } from './calculator.js';
+import { play, warmUp, soundEnabled, setSoundEnabled } from './feedback.js';
+import { tap } from './haptics.js';
+import { initUpdates, STATUS } from './update.js';
 
 const calc = new Calculator();
 const resultEl = document.getElementById('result');
 const expressionEl = document.getElementById('expression');
 const clearKey = document.getElementById('clearKey');
 const keypad = document.getElementById('keypad');
+const soundToggle = document.getElementById('soundToggle');
+const versionChip = document.getElementById('versionChip');
+
+// Looked up once: render() runs on every keypress and should not be querying.
+const opKeys = [...keypad.querySelectorAll('[data-op]')];
+const keysByAction = new Map();
+const keysByDigit = new Map();
+for (const key of keypad.querySelectorAll('.key')) {
+  if (key.dataset.digit) keysByDigit.set(key.dataset.digit, key);
+  else if (key.dataset.op) keysByAction.set(`op:${key.dataset.op}`, key);
+  else keysByAction.set(key.dataset.action, key);
+}
+
+let lastClearLabel = '';
+let lastExpression = '';
 
 function render() {
   const state = calc.state();
@@ -12,18 +30,22 @@ function render() {
 
   resultEl.textContent = text;
   resultEl.classList.toggle('is-error', state.errored);
-  expressionEl.textContent = state.expression;
-
-  // AC wipes everything; C only clears what is being typed.
-  const label = state.hasClearableEntry ? 'C' : 'AC';
-  clearKey.textContent = label;
-  clearKey.setAttribute('aria-label', label === 'AC' ? 'All clear' : 'Clear entry');
-
-  // Long answers shrink to stay on one line; the CSS owns the actual sizes.
   resultEl.dataset.len = lengthBucket(text.length);
 
-  // Highlight the operator waiting for its right-hand side.
-  for (const key of keypad.querySelectorAll('[data-op]')) {
+  // Skip the writes that would otherwise dirty layout on every single press.
+  if (state.expression !== lastExpression) {
+    expressionEl.textContent = state.expression;
+    lastExpression = state.expression;
+  }
+
+  const label = state.hasClearableEntry ? 'C' : 'AC';
+  if (label !== lastClearLabel) {
+    clearKey.textContent = label;
+    clearKey.setAttribute('aria-label', label === 'AC' ? 'All clear' : 'Clear entry');
+    lastClearLabel = label;
+  }
+
+  for (const key of opKeys) {
     const active = !state.typing && calc.pendingOp === key.dataset.op;
     key.setAttribute('aria-pressed', String(active));
   }
@@ -34,6 +56,14 @@ function lengthBucket(length) {
   if (length <= 11) return 'md';
   if (length <= 15) return 'sm';
   return 'xs';
+}
+
+/** Which sound a key should make. */
+function voiceFor(action) {
+  if (action === 'equals') return 'equals';
+  if (action === 'operator') return 'operator';
+  if (action === 'digit' || action === 'decimal') return 'key';
+  return 'fn';
 }
 
 function perform(action, dataset = {}) {
@@ -52,10 +82,52 @@ function perform(action, dataset = {}) {
   render();
 }
 
+/** A key press: feedback first so it lands with the touch, then the maths. */
+function activate(action, dataset, withHaptics) {
+  play(voiceFor(action));
+  if (withHaptics) tap();
+  perform(action, dataset);
+}
+
+/* Keys fire on pointerdown rather than click. A click only arrives once the
+   browser has decided the touch was not a scroll or a double-tap, which is
+   what made the keypad feel a beat behind the finger. */
+let lastPointerAt = 0;
+let pressedKey = null;
+
+keypad.addEventListener('pointerdown', (event) => {
+  if (event.button > 0) return;
+  const key = event.target.closest('.key');
+  if (!key) return;
+  lastPointerAt = event.timeStamp;
+
+  // Safari only applies :active on touch under specific conditions, so the
+  // pressed look is driven from here instead of relying on it.
+  pressedKey = key;
+  key.classList.add('is-pressed');
+
+  warmUp();
+  activate(key.dataset.action, key.dataset, true);
+}, { passive: true });
+
+/* Listened for on the window so a finger that slides off a key still releases
+   it, rather than leaving the key stuck looking pressed. */
+function releaseKey() {
+  if (!pressedKey) return;
+  pressedKey.classList.remove('is-pressed');
+  pressedKey = null;
+}
+
+window.addEventListener('pointerup', releaseKey, { passive: true });
+window.addEventListener('pointercancel', releaseKey, { passive: true });
+
+/* Still needed for Space/Enter on a focused key, which produce a click with no
+   pointer event. The timestamp guard stops a real tap counting twice. */
 keypad.addEventListener('click', (event) => {
   const key = event.target.closest('.key');
   if (!key) return;
-  perform(key.dataset.action, key.dataset);
+  if (event.timeStamp - lastPointerAt < 700) return;
+  activate(key.dataset.action, key.dataset, false);
 });
 
 /* Keyboard support, for the iPad's hardware keyboard and for desktop. */
@@ -97,51 +169,101 @@ window.addEventListener('keydown', (event) => {
   }
 
   event.preventDefault();
-  perform(action, payload);
+  warmUp();
+  activate(action, payload, false);
   flash(action, payload);
 });
 
 /** Light up the on-screen key that matches a physical keypress. */
 function flash(action, payload) {
-  const selector = action === 'digit'
-    ? `[data-digit="${payload.digit}"]`
+  const key = action === 'digit'
+    ? keysByDigit.get(payload.digit)
     : action === 'operator'
-      ? `[data-op="${payload.op}"]`
-      : `[data-action="${action === 'clearAll' ? 'clear' : action}"]`;
+      ? keysByAction.get(`op:${payload.op}`)
+      : keysByAction.get(action === 'clearAll' ? 'clear' : action);
 
-  const key = keypad.querySelector(selector);
   if (!key) return;
   key.classList.add('is-pressed');
   setTimeout(() => key.classList.remove('is-pressed'), 110);
 }
 
 /* Swipe left/right across the display deletes the last digit, like iOS. */
-let touchStartX = null;
 const display = document.querySelector('.display');
+let touchStartX = null;
+
 display.addEventListener('touchstart', (event) => {
   touchStartX = event.changedTouches[0].clientX;
 }, { passive: true });
+
 display.addEventListener('touchend', (event) => {
   if (touchStartX === null) return;
   const dx = event.changedTouches[0].clientX - touchStartX;
   touchStartX = null;
-  if (Math.abs(dx) > 40) perform('backspace');
+  if (Math.abs(dx) > 40) {
+    play('fn');
+    tap();
+    perform('backspace');
+  }
 }, { passive: true });
 
-/* Double-tap zoom still slips through on older iOS; block the second tap. */
-let lastTouchEnd = 0;
-document.addEventListener('touchend', (event) => {
-  const now = Date.now();
-  if (now - lastTouchEnd < 300) event.preventDefault();
-  lastTouchEnd = now;
-}, { passive: false });
-
-render();
-
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch(() => {
-      /* Offline support is a bonus; the calculator works without it. */
-    });
-  });
+/* Sound toggle. */
+function renderSoundToggle() {
+  const on = soundEnabled();
+  soundToggle.setAttribute('aria-pressed', String(on));
+  soundToggle.setAttribute('aria-label', on ? 'Mute key sounds' : 'Unmute key sounds');
 }
+
+soundToggle.addEventListener('click', () => {
+  setSoundEnabled(!soundEnabled());
+  renderSoundToggle();
+  tap();
+  play('fn'); // Silent when muting, which is its own confirmation.
+});
+
+/* Version chip: shows the running version, checks for and applies updates. */
+const VERSION = window.APP_VERSION || '0.0.0';
+let chipState = STATUS.IDLE;
+let revertTimer = null;
+
+function setChip(state) {
+  chipState = state;
+  clearTimeout(revertTimer);
+
+  switch (state) {
+    case STATUS.CHECKING:
+      versionChip.textContent = 'Checking…';
+      versionChip.disabled = true;
+      break;
+    case STATUS.READY:
+      versionChip.textContent = 'Update ready';
+      versionChip.disabled = false;
+      break;
+    case STATUS.CURRENT:
+      versionChip.textContent = 'Up to date';
+      versionChip.disabled = false;
+      revertTimer = setTimeout(() => setChip(STATUS.IDLE), 2200);
+      break;
+    default:
+      versionChip.textContent = `v${VERSION}`;
+      versionChip.disabled = false;
+  }
+
+  versionChip.dataset.state = state;
+}
+
+const updates = initUpdates(setChip);
+
+versionChip.addEventListener('click', () => {
+  tap();
+  if (chipState === STATUS.READY) {
+    versionChip.textContent = 'Updating…';
+    versionChip.disabled = true;
+    updates.apply();
+    return;
+  }
+  updates.check();
+});
+
+renderSoundToggle();
+setChip(STATUS.IDLE);
+render();

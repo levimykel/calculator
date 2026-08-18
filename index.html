@@ -20,12 +20,21 @@
 <meta name="apple-mobile-web-app-title" content="Calcutron">
 
 <link rel="stylesheet" href="css/styles.css">
+<script src="version.js"></script>
 </head>
 <body>
 <div class="app">
   <header class="topbar">
-    <img class="mark" src="icons/calcutron.svg" alt="" width="32" height="32">
+    <img class="mark" src="icons/calcutron.svg" alt="" width="30" height="30">
     <h1>Calcutron</h1>
+    <button class="chip chip--icon" id="soundToggle" type="button" aria-pressed="true" aria-label="Mute key sounds">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path class="icon__speaker" d="M4 9.5h3.2L12 5.5v13L7.2 14.5H4z"/>
+        <path class="icon__waves" d="M15.4 9a4.2 4.2 0 0 1 0 6M18 6.6a7.6 7.6 0 0 1 0 10.8"/>
+        <path class="icon__cross" d="M15.8 9.8l4.4 4.4M20.2 9.8l-4.4 4.4"/>
+      </svg>
+    </button>
+    <button class="chip" id="versionChip" type="button" aria-live="polite">v1.1.0</button>
   </header>
 
   <section class="display" aria-live="polite" aria-atomic="true">

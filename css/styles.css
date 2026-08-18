@@ -81,7 +81,58 @@ body {
   font-weight: 700;
   letter-spacing: 0.2px;
   color: var(--muted);
+  margin-right: auto;
 }
+
+.chip {
+  -webkit-appearance: none;
+  appearance: none;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.05);
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background-color 130ms ease-out, color 130ms ease-out;
+  touch-action: manipulation;
+}
+
+.chip:active { background: rgba(255,255,255,0.12); transition-duration: 0s; }
+.chip[disabled] { opacity: 0.6; cursor: default; }
+
+/* An available update is the one thing here worth actually noticing. */
+.chip[data-state="ready"] {
+  background: var(--eq);
+  border-color: var(--eq);
+  color: #05231f;
+}
+
+.chip--icon {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  width: 30px;
+  height: 30px;
+}
+
+.icon {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.icon__speaker { fill: currentColor; stroke-linejoin: round; }
+.chip[aria-pressed="true"] .icon__cross { display: none; }
+.chip[aria-pressed="false"] .icon__waves { display: none; }
+.chip[aria-pressed="false"] { color: #6b769b; }
 
 .display {
   /* Grows into the space above the keypad, but capped so tall screens do not
@@ -149,12 +200,21 @@ body {
   font-size: clamp(1.4rem, 6vw, 1.9rem);
   font-weight: 600;
   cursor: pointer;
-  transition: background-color 90ms ease, transform 90ms ease;
+  /* Release eases out; the press itself is instant (see below). Anything
+     slower than this reads as the key lagging behind the finger. */
+  transition: background-color 130ms ease-out, transform 130ms ease-out;
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+  /* No double-tap-zoom or scroll gesture to wait on, so pointerdown can act
+     immediately instead of the browser holding the event back. */
+  touch-action: none;
 }
 
 .key:active,
-.key.is-pressed { background: var(--key-press); transform: scale(0.96); }
+.key.is-pressed {
+  background: var(--key-press);
+  transform: scale(0.96);
+  transition-duration: 0s;
+}
 
 .key--fn { background: var(--key-fn); font-size: clamp(1.2rem, 5vw, 1.6rem); }
 .key--fn:active, .key--fn.is-pressed { background: var(--key-fn-press); }
@@ -181,7 +241,12 @@ body {
 /* Landscape phones: drop the chrome and let the keypad take the leftover
    height, so the bottom row never falls off a short viewport. */
 @media (orientation: landscape) and (max-height: 560px) {
-  .topbar { display: none; }
+  .topbar { padding: 0 2px; gap: 7px; }
+  .topbar h1 { font-size: 0.85rem; }
+  .mark { width: 20px; height: 20px; border-radius: 6px; }
+  .chip { font-size: 0.68rem; padding: 3px 8px; }
+  .chip--icon { width: 22px; height: 22px; }
+  .icon { width: 14px; height: 14px; }
 
   .display {
     min-height: 48px;

@@ -1,12 +1,13 @@
 {
   "name": "calcutron",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "A friendly little calculator PWA.",
   "private": true,
   "type": "module",
   "scripts": {
     "test": "node --test 'test/*.test.js'",
-    "start": "npx --yes http-server . -p 8080 -c-1"
+    "start": "npx --yes http-server . -p 8080 -c-1",
+    "set-version": "node scripts/set-version.mjs"
   },
   "license": "MIT"
 }
