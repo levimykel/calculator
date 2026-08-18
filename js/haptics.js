@@ -1,81 +1,32 @@
 /**
- * Light haptic feedback on key presses.
+ * Light haptic feedback on key presses, where the platform allows it.
  *
- * There is no straightforward way to do this on iOS. Safari does not implement
- * the Vibration API on any platform, so `navigator.vibrate` is simply absent on
- * an iPhone. The only lever Safari exposes is a side effect: toggling a
- * `<input type="checkbox" switch>` (Safari 17.4+) plays the system switch
- * haptic. Driving a hidden switch is therefore the iOS path here.
+ * Android and other Vibration API browsers get a real pulse. iOS gets nothing,
+ * and that is not an oversight:
  *
- * That is a side effect Apple never promised to keep, so treat it as
- * best-effort: if it stops working, or the phone has haptics turned off in
- * Settings, presses stay silent and nothing else breaks.
+ *   - Safari does not implement the Vibration API on any platform, so
+ *     `navigator.vibrate` does not exist on an iPhone or iPad.
+ *   - The one haptic Safari does emit is a side effect of a *person* toggling
+ *     a native `<input type="checkbox" switch>`. Two attempts to drive a hidden
+ *     switch from script were made here and neither produced a haptic on real
+ *     hardware, which fits the theory that the haptic requires a genuine touch
+ *     landing on the switch itself rather than a programmatic click. Getting
+ *     that would mean putting a real switch under every key and giving up the
+ *     keypad's buttons, focus behaviour and accessibility — too high a price
+ *     for a side effect Apple never documented and could remove.
+ *
+ * So on iOS, presses are silent to the touch. A native shell (a WKWebView app,
+ * or Capacitor) is the only route to real haptics there, since UIKit's
+ * feedback generators are not reachable from a web page.
  */
 
-let iosSwitch = null;
-let iosLabel = null;
-let host = null;
-
-const supportsVibrate = typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function';
-
-/** Safari exposes `switch` as a property on the input element once supported. */
-const supportsSwitch = (() => {
-  if (typeof document === 'undefined') return false;
-  try {
-    return 'switch' in document.createElement('input');
-  } catch {
-    return false;
-  }
-})();
+const supported = typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function';
 
 export function hapticsAvailable() {
-  return supportsVibrate || supportsSwitch;
+  return supported;
 }
 
 export function tap() {
-  if (supportsVibrate) {
-    // A very short pulse; long enough to feel, short enough not to buzz.
-    navigator.vibrate(8);
-    return;
-  }
-  if (supportsSwitch) toggleSwitch();
-}
-
-function toggleSwitch() {
-  if (!iosLabel) build();
-  if (!iosLabel) return;
-  // The haptic comes from the switch changing state, so alternate every press.
-  iosLabel.click();
-}
-
-function build() {
-  try {
-    // The switch must render as a real, native switch control — that native
-    // control is what produces the haptic. So it keeps its default appearance
-    // and its natural size, and is hidden by clipping it inside a 1px box
-    // rather than by restyling or resizing the control itself.
-    //
-    // The first version of this set `appearance: none` and forced the switch
-    // to 1x1, which stripped the native control and produced no haptic at all.
-    host = document.createElement('div');
-    host.setAttribute('aria-hidden', 'true');
-    host.style.cssText =
-      'position:fixed;bottom:0;left:0;width:1px;height:1px;overflow:hidden;' +
-      'opacity:0.01;pointer-events:none;z-index:-1;';
-
-    iosSwitch = document.createElement('input');
-    iosSwitch.type = 'checkbox';
-    iosSwitch.setAttribute('switch', '');
-    iosSwitch.id = 'calcutron-haptic-switch';
-    iosSwitch.tabIndex = -1;
-
-    iosLabel = document.createElement('label');
-    iosLabel.setAttribute('for', iosSwitch.id);
-
-    host.append(iosSwitch, iosLabel);
-    document.body.append(host);
-  } catch {
-    iosSwitch = null;
-    iosLabel = null;
-  }
+  // Short enough to read as a tick rather than a buzz.
+  if (supported) navigator.vibrate(8);
 }

@@ -1,5 +1,5 @@
 import { Calculator, formatDisplay } from './calculator.js';
-import { play, warmUp, soundEnabled, setSoundEnabled } from './feedback.js';
+import { play, warmUp, soundLevel, cycleSoundLevel } from './feedback.js';
 import { tap } from './haptics.js';
 import { initUpdates, STATUS } from './update.js';
 
@@ -206,18 +206,24 @@ display.addEventListener('touchend', (event) => {
   }
 }, { passive: true });
 
-/* Sound toggle. */
+/* Sound level. One button, cycling soft -> loud -> off. */
+const SOUND_LABELS = {
+  soft: 'Key sounds: soft. Tap for louder.',
+  loud: 'Key sounds: loud. Tap to turn off.',
+  off: 'Key sounds off. Tap for soft.',
+};
+
 function renderSoundToggle() {
-  const on = soundEnabled();
-  soundToggle.setAttribute('aria-pressed', String(on));
-  soundToggle.setAttribute('aria-label', on ? 'Mute key sounds' : 'Unmute key sounds');
+  const current = soundLevel();
+  soundToggle.dataset.level = current;
+  soundToggle.setAttribute('aria-label', SOUND_LABELS[current]);
 }
 
 soundToggle.addEventListener('click', () => {
-  setSoundEnabled(!soundEnabled());
+  cycleSoundLevel();
   renderSoundToggle();
   tap();
-  play('fn'); // Silent when muting, which is its own confirmation.
+  play('fn'); // Doubles as a preview of the level just selected.
 });
 
 /* Version chip: shows the running version, checks for and applies updates. */

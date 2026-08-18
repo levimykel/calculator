@@ -12,9 +12,10 @@ full screen and offline, like a native app.
 - `AC` / `C` — the key switches itself depending on whether there is an entry to clear
 - Swipe across the display to delete the last digit
 - Full keyboard support, so it is usable with an iPad keyboard or on a desktop
-- Subtle mechanical key clicks, with a weightier one on `=`; mutable from the
-  speaker button, and the choice is remembered
-- Light haptic feedback on each press (see the caveat below)
+- Subtle mechanical key clicks, with a weightier one on `=`. The speaker button
+  cycles soft / loud / off, and the choice is remembered
+- Light haptic feedback on each press, on platforms that allow it (not iOS —
+  see below)
 - Works with no network once installed
 - Shows its version, and updates on your say-so rather than mid-calculation
 
@@ -72,34 +73,51 @@ and the feedback keeps working offline. A voice is a burst of bandpassed noise
 (the click) plus a brief low sine (the body), which is roughly how a mechanical
 switch behaves. `=` gets a lower, longer version with a second tick behind it.
 
-They are deliberately quiet, sitting under the sound of a fingertip on glass.
-`MASTER_GAIN` in `js/feedback.js` trims all of them at once; individual voices
-are in the `VOICES` table.
+The speaker button cycles three levels, defaulting to soft:
+
+| level | master gain | key click RMS |
+| ----- | ----------- | ------------- |
+| soft  | 0.16        | 0.00045       |
+| loud  | 0.45        | 0.00120       |
+| off   | 0           | silent        |
+
+`LEVELS` in `js/feedback.js` is the dial; individual voices are in `VOICES`.
 
 Because "quieter" and "more mechanical" are easy to get wrong by ear, the tests
 render each voice through an `OfflineAudioContext` and measure it: peak, RMS,
 how long it stays audible, and the ratio of energy above 1.2 kHz to energy below
 500 Hz. That last number is what separates a click from a tone — the keys sit
-around 2.4, and a failing change would show up as a number, not a vibe.
+around 2.3, and a failing change would show up as a number, not a vibe.
+
+### Why the clicks still follow the phone's volume
+
+They cannot do otherwise. Web Audio output is mixed into the device's media
+volume, and the web platform exposes no way to opt out of that or to read what
+the volume is set to. Native apps can, by playing through a system sound channel
+that ignores the media slider — which is how apps like Calcbot keep a click at
+one fixed level — but that is a native audio API with no web equivalent.
+
+The levels above are the closest available substitute: pick one and it stays put,
+though the phone's own volume still scales it.
 
 ## A note on haptics
 
-Safari does not implement the Vibration API on any platform, so
-`navigator.vibrate` does not exist on an iPhone or iPad. The only haptic Safari
-exposes to a web app is a side effect of toggling a
-`<input type="checkbox" switch>` (Safari 17.4+), and that is what `js/haptics.js`
-drives on iOS. Android, where `navigator.vibrate` exists, uses the real API.
+Android and other browsers implementing the Vibration API get a real pulse.
+**iOS gets nothing**, and that is a platform limit rather than an oversight:
 
-The switch has to stay a genuine native control for this to work, so it keeps
-its default appearance and natural size and is hidden by clipping it inside a
-1px box. Restyling it — an `appearance: none`, or forcing its width and height —
-replaces the native control and silently kills the haptic.
+- Safari does not implement the Vibration API on any platform, so
+  `navigator.vibrate` does not exist on an iPhone or iPad.
+- The one haptic Safari emits is a side effect of a *person* toggling a native
+  `<input type="checkbox" switch>`. Two attempts to drive a hidden switch from
+  script were tried here and neither fired on real hardware, which fits the
+  theory that the haptic needs a genuine touch landing on the switch itself.
+  Getting that would mean putting a real switch under every key and giving up
+  the keypad's buttons, focus behaviour and accessibility — too high a price for
+  an undocumented side effect Apple could remove at any point.
 
-This remains best-effort: it is an undocumented side effect rather than an API,
-and it **cannot be verified without real hardware**. If it stops working,
-presses simply stop buzzing and nothing else is affected. Worth checking the
-phone's Settings → Sounds & Haptics → System Haptics before concluding it is
-broken.
+That code has been removed rather than left in place pretending to work. Real
+haptics on iOS would need a native shell — a WKWebView app, or Capacitor — since
+UIKit's feedback generators are not reachable from a web page.
 
 ## Layout
 

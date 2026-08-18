@@ -130,9 +130,16 @@ body {
 }
 
 .icon__speaker { fill: currentColor; stroke-linejoin: round; }
-.chip[aria-pressed="true"] .icon__cross { display: none; }
-.chip[aria-pressed="false"] .icon__waves { display: none; }
-.chip[aria-pressed="false"] { color: #6b769b; }
+
+/* One speaker glyph, three states: no waves and a cross when off, one wave
+   for soft, both waves for loud. */
+.chip[data-level="off"] .icon__wave-in,
+.chip[data-level="off"] .icon__wave-out,
+.chip[data-level="soft"] .icon__wave-out,
+.chip[data-level="soft"] .icon__cross,
+.chip[data-level="loud"] .icon__cross { display: none; }
+
+.chip[data-level="off"] { color: #6b769b; }
 
 .display {
   /* Grows into the space above the keypad, but capped so tall screens do not

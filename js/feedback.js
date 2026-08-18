@@ -12,8 +12,14 @@
 
 const STORAGE_KEY = 'calcutron.sound';
 
-/** Master trim. Lower this to make every voice quieter at once. */
-const MASTER_GAIN = 0.45;
+/**
+ * Master trim per level. These are the dials to turn if the clicks are the
+ * wrong loudness; every voice scales with them.
+ */
+export const LEVELS = { off: 0, soft: 0.16, loud: 0.45 };
+
+/** Tapping the speaker button walks this order. */
+export const LEVEL_ORDER = ['soft', 'loud', 'off'];
 
 /**
  * A voice is a click (bandpassed noise) plus a body (a brief low sine).
@@ -43,36 +49,51 @@ export const VOICES = {
 
 /* Click gains look large next to the body gains because a narrow bandpass
    throws away most of the noise it is given — roughly 70% of it at these
-   settings. The numbers that matter are the rendered peaks, which the test
+   settings. The numbers that matter are the rendered levels, which the test
    suite measures and pins. */
 
 let ctx = null;
 let master = null;
-let enabled = readPreference();
+let level = readPreference();
 let broken = false;
 
 const noiseBuffers = new WeakMap();
 
 function readPreference() {
+  let stored = null;
   try {
-    return localStorage.getItem(STORAGE_KEY) !== 'off';
+    stored = localStorage.getItem(STORAGE_KEY);
   } catch {
-    return true; // Private browsing can throw on storage access.
+    return 'soft'; // Private browsing can throw on storage access.
   }
+  if (stored in LEVELS) return stored;
+  // Earlier versions stored a plain on/off flag.
+  if (stored === 'off') return 'off';
+  return 'soft';
 }
 
-export function soundEnabled() {
-  return enabled;
+export function soundLevel() {
+  return level;
 }
 
-export function setSoundEnabled(value) {
-  enabled = value;
+export function setSoundLevel(next) {
+  level = next in LEVELS ? next : 'soft';
   try {
-    localStorage.setItem(STORAGE_KEY, value ? 'on' : 'off');
+    localStorage.setItem(STORAGE_KEY, level);
   } catch {
-    /* Preference just will not persist; the toggle still works this session. */
+    /* Preference just will not persist; the control still works this session. */
   }
-  if (value) ensureContext();
+  if (level === 'off') return;
+  const audio = ensureContext();
+  if (audio) master.gain.value = LEVELS[level];
+}
+
+/** Advance to the next level and return it. */
+export function cycleSoundLevel() {
+  const at = LEVEL_ORDER.indexOf(level);
+  const next = LEVEL_ORDER[(at + 1) % LEVEL_ORDER.length];
+  setSoundLevel(next);
+  return next;
 }
 
 /** White noise, made once per context and shared by every click. */
@@ -153,7 +174,7 @@ function ensureContext() {
   }
 
   master = ctx.createGain();
-  master.gain.value = MASTER_GAIN;
+  master.gain.value = LEVELS[level];
   master.connect(ctx.destination);
   return ctx;
 }
@@ -165,7 +186,7 @@ export function warmUp() {
 }
 
 export function play(voiceName) {
-  if (!enabled) return;
+  if (level === 'off') return;
   const audio = ensureContext();
   if (!audio) return;
   if (audio.state === 'suspended') audio.resume().catch(() => {});
