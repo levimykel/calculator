@@ -80,6 +80,11 @@ body {
   :root { --safe-bottom: 0px; }
 }
 
+/* Belt and braces: iOS exposes navigator.standalone for home-screen apps, and
+   it is not always in step with the display-mode query above. js/app.js sets
+   this attribute from it. */
+:root[data-standalone="true"] { --safe-bottom: 0px; }
+
 .topbar {
   display: flex;
   align-items: center;
@@ -359,13 +364,15 @@ body {
 .keypad {
   flex: 0 0 auto;
   /* Pinned to the bottom of the app regardless of how the bands above size,
-     so no arrangement of them can leave slack underneath. */
+     so no arrangement of them can leave slack underneath. --pull takes back
+     any residue that measures out below it at runtime (see settle() in app.js). */
   margin-top: auto;
+  margin-bottom: calc(-1 * var(--pull, 0px));
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   grid-template-rows: repeat(6, 1fr);
   gap: 1px;
-  height: min(60dvh, 470px);
+  height: min(64dvh, 500px);
   background: var(--hairline);
   border-radius: var(--radius);
   overflow: hidden;

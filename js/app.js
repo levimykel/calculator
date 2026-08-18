@@ -16,6 +16,52 @@ const clearHistoryBtn = document.getElementById('clearHistory');
 
 const history = new History();
 const keypad = document.getElementById('keypad');
+const diagEl = document.getElementById('diag');
+
+/* iOS reports a home-screen app through navigator.standalone; the CSS uses
+   this to stop reserving the home-indicator strip a second time. */
+if (navigator.standalone === true) {
+  document.documentElement.dataset.standalone = 'true';
+}
+
+/**
+ * Take back any space left under the keypad. The layout should already end
+ * flush with the viewport, but iOS has been known to lay a standalone app out
+ * a little short, and this costs nothing when there is nothing to reclaim.
+ */
+function settle() {
+  keypad.style.setProperty('--pull', '0px');
+  const slack = window.innerHeight - keypad.getBoundingClientRect().bottom;
+  keypad.style.setProperty('--pull', `${Math.max(0, Math.round(slack))}px`);
+  if (!diagEl.hidden) diagEl.textContent = layoutReport();
+}
+
+window.addEventListener('resize', settle);
+window.addEventListener('orientationchange', () => setTimeout(settle, 150));
+
+/** Measure a safe-area inset by asking the browser to size an element by it. */
+function measureInset(side) {
+  const probe = document.createElement('div');
+  probe.style.cssText = `position:fixed;left:0;bottom:0;width:0;visibility:hidden;pointer-events:none;height:env(safe-area-inset-${side})`;
+  document.body.append(probe);
+  const value = Math.round(probe.getBoundingClientRect().height);
+  probe.remove();
+  return value;
+}
+
+function layoutReport() {
+  const keys = keypad.getBoundingClientRect();
+  const app = document.querySelector('.app').getBoundingClientRect();
+  return [
+    `viewport ${window.innerHeight}`,
+    `screen ${window.screen ? window.screen.height : '?'}`,
+    `app ${Math.round(app.top)}→${Math.round(app.bottom)}`,
+    `keypad→${Math.round(keys.bottom)}`,
+    `slack ${Math.round(window.innerHeight - keys.bottom)}`,
+    `inset t${measureInset('top')} b${measureInset('bottom')}`,
+    `standalone ${navigator.standalone === true} / ${window.matchMedia('(display-mode: standalone)').matches}`,
+  ].join('   ');
+}
 const soundToggle = document.getElementById('soundToggle');
 const versionChip = document.getElementById('versionChip');
 
@@ -420,7 +466,26 @@ function setChip(state) {
 
 const updates = initUpdates(setChip);
 
+/* Long-press the version chip for the layout numbers. */
+let holdTimer = null;
+let heldOpen = false;
+
+versionChip.addEventListener('pointerdown', () => {
+  heldOpen = false;
+  holdTimer = setTimeout(() => {
+    heldOpen = true;
+    diagEl.hidden = !diagEl.hidden;
+    if (!diagEl.hidden) diagEl.textContent = layoutReport();
+    tap();
+  }, 600);
+});
+
+for (const event of ['pointerup', 'pointercancel', 'pointerleave']) {
+  versionChip.addEventListener(event, () => clearTimeout(holdTimer));
+}
+
 versionChip.addEventListener('click', () => {
+  if (heldOpen) { heldOpen = false; return; } // that press was the long-press
   tap();
   if (chipState === STATUS.READY) {
     versionChip.textContent = 'Updating…';
@@ -435,3 +500,4 @@ renderSoundToggle();
 setChip(STATUS.IDLE);
 renderHistory();
 render();
+settle();
