@@ -4,7 +4,7 @@
    test suite. It lives here rather than being imported so that this file's own
    bytes change every release — that is what browsers compare when deciding
    whether a new worker exists. */
-const VERSION = '3.9.1';
+const VERSION = '4.0.0';
 
 const CACHE = `calcutron-${VERSION}`;
 
@@ -16,6 +16,7 @@ const ASSETS = [
   'js/app.js',
   'js/calculator.js',
   'js/feedback.js',
+  'js/growth.js',
   'js/haptics.js',
   'js/history.js',
   'js/update.js',

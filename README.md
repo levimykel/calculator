@@ -28,8 +28,44 @@ full screen and offline, like a native app.
   cycles soft / loud / off, and the choice is remembered
 - Light haptic feedback on each press, on platforms that allow it (not iOS —
   see below)
+- A second screen for compound growth: a starting amount, a monthly
+  contribution, a rate and a horizon, projected to a balance as you type
 - Works with no network once installed
 - Shows its version, and updates on your say-so rather than mid-calculation
+
+## Growth
+
+The chip in the header swaps the calculator for a compound-growth projection —
+the "what will this be worth in thirty years" arithmetic, which is tedious to
+do a keystroke at a time.
+
+Four numbers: a starting amount, a monthly contribution, an assumed annual
+return (7% to begin with) and a horizon in years. It answers with the balance,
+what you will have paid in against what the growth added, and the balance at
+each decade along the way — which is the "what if I stopped five years earlier"
+question, answered without retyping anything.
+
+**The maths.** Monthly compounding, with each contribution landing at the end
+of its month — an ordinary annuity, the convention every retirement calculator
+uses and the conservative reading of "I put 500 in each month". `js/growth.js`
+walks the months rather than using the closed form: it costs nothing at these
+sizes, it needs no special case for a zero rate, and it produces the
+year-by-year series for free. The tests check it against the closed forms
+anyway.
+
+**Typing into it.** The fields are pressed, not focused. Real inputs would
+raise the system keyboard over an app whose whole point is its own keypad, so
+the growth screen carries a four-by-four pad of its own and the tapped field
+takes what it types. Nothing is submitted — the projection is recomputed on
+every press. The four values and which screen you were on are both remembered.
+
+Every field refuses what it cannot hold rather than accepting it and producing
+nonsense: 30% is the ceiling on the return and 75 the ceiling on the years,
+past which a projection stops being a projection.
+
+**What it is not.** There is no inflation adjustment, no tax, no varying
+contributions, and the currency is a plain `$` — `CURRENCY` in `js/growth.js`
+is the one place that is decided.
 
 ## Running it locally
 
@@ -393,6 +429,9 @@ reference to the DOM, which is what makes it straightforward to test.
 - **`.app` already has a flex `gap`**, so a margin between two of its children
   adds to it rather than replacing it. The fx row's spacing comes from the gap
   alone, and the keypad's height subtracts that gap along with the row.
+- **Two keypads means two of every digit.** The growth pad carries its own
+  `7`, so anything looking a key up — the flash index, a test locator — has to
+  say which pad it means. An unscoped `[data-digit]` now matches twice.
 - **A tap target can be bigger than the space it takes.** The expression line
   and the `fx` handle are both padded out for the finger and pulled back in
   with a negative margin of the same size, so neither costs the layout

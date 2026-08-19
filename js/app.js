@@ -1,4 +1,7 @@
 import { Calculator, formatNumber, tokenParts, isPlainNumber } from './calculator.js';
+import {
+  FIELDS, DEFAULTS, project, milestones, formatMoney, formatField, valueOfField, accepts,
+} from './growth.js';
 import { History } from './history.js';
 import { play, warmUp, soundLevel, cycleSoundLevel } from './feedback.js';
 import { tap } from './haptics.js';
@@ -20,18 +23,34 @@ const history = new History();
 const keypad = document.getElementById('keypad');
 const fxPad = document.getElementById('fxPad');
 const fxToggle = document.getElementById('fxToggle');
+const growthPad = document.getElementById('growthPad');
+const modeToggle = document.getElementById('modeToggle');
+const growthFieldsEl = document.getElementById('growthFields');
+const growthBalanceEl = document.getElementById('growthBalance');
+const growthSplitEl = document.getElementById('growthSplit');
+const growthMarksEl = document.getElementById('growthMarks');
 const soundToggle = document.getElementById('soundToggle');
 const versionChip = document.getElementById('versionChip');
 
 // Looked up once: render() runs on every keypress and should not be querying.
 const keysByAction = new Map();
 const keysByDigit = new Map();
-for (const key of document.querySelectorAll('.keypad .key, .fxpad .key')) {
-  if (key.dataset.digit) keysByDigit.set(key.dataset.digit, key);
-  else if (key.dataset.op) keysByAction.set(`op:${key.dataset.op}`, key);
-  else if (key.dataset.constant) keysByAction.set(`const:${key.dataset.constant}`, key);
-  else keysByAction.set(key.dataset.action, key);
+const growthByDigit = new Map();
+const growthByAction = new Map();
+
+function indexKeys(selector, digits, actions) {
+  for (const key of document.querySelectorAll(selector)) {
+    if (key.dataset.digit) digits.set(key.dataset.digit, key);
+    else if (key.dataset.op) actions.set(`op:${key.dataset.op}`, key);
+    else if (key.dataset.constant) actions.set(`const:${key.dataset.constant}`, key);
+    else actions.set(key.dataset.action, key);
+  }
 }
+
+// Two indexes rather than one: both pads carry a "7", and a physical key
+// should light the one that is on screen.
+indexKeys('.keypad .key, .fxpad .key', keysByDigit, keysByAction);
+indexKeys('.growthpad .key', growthByDigit, growthByAction);
 
 let lastResult = null;
 let lastEntry = null;
@@ -117,6 +136,12 @@ function lengthBucket(length) {
 
 const SILENT = new Set(['caretLeft', 'caretRight', 'caretHome', 'caretEnd']);
 
+/** What the growth screen answers to, and what only it answers to. */
+const FIELD_ACTIONS = new Set(['nextField', 'previousField']);
+const GROWTH_ACTIONS = new Set([
+  'digit', 'decimal', 'backspace', 'clearOrBack', 'clearAll', 'equals', ...FIELD_ACTIONS,
+]);
+
 /** Which sound a key should make, or none for moving about. */
 function voiceFor(action) {
   if (SILENT.has(action)) return null;
@@ -127,6 +152,8 @@ function voiceFor(action) {
 }
 
 function perform(action, dataset = {}) {
+  if (mode === 'growth') return performGrowth(action, dataset);
+
   switch (action) {
     case 'digit': calc.digit(dataset.digit); break;
     case 'decimal': calc.decimal(); break;
@@ -233,6 +260,7 @@ function onPadClick(event) {
 
 bindKeys(keypad);
 bindKeys(fxPad);
+bindKeys(growthPad);
 
 /* ------------------------------------------------------------- functions */
 
@@ -513,6 +541,8 @@ const KEY_MAP = {
   ArrowRight: ['caretRight', {}],
   Home: ['caretHome', {}],
   End: ['caretEnd', {}],
+  ArrowUp: ['previousField', {}],
+  ArrowDown: ['nextField', {}],
   '^': ['operator', { op: 'power' }],
   r: ['sqrt', {}],
   R: ['sqrt', {}],
@@ -536,6 +566,10 @@ window.addEventListener('keydown', (event) => {
     return;
   }
 
+  // Each screen answers to its own keys. Letting the others through would
+  // click and flash for a press that could not do anything.
+  if (mode === 'growth' ? !GROWTH_ACTIONS.has(action) : FIELD_ACTIONS.has(action)) return;
+
   event.preventDefault();
   warmUp();
   activate(action, payload, false);
@@ -544,6 +578,11 @@ window.addEventListener('keydown', (event) => {
 
 /** Light up the on-screen key that matches a physical keypress. */
 function keyFor(action, payload) {
+  if (mode === 'growth') {
+    return action === 'digit'
+      ? growthByDigit.get(payload.digit)
+      : growthByAction.get(action);
+  }
   if (action === 'digit') return keysByDigit.get(payload.digit);
   if (action === 'operator') return keysByAction.get(`op:${payload.op}`);
   if (action === 'constant') return keysByAction.get(`const:${payload.constant}`);
@@ -642,7 +681,189 @@ versionChip.addEventListener('click', () => {
   updates.check();
 });
 
+/* ---------------------------------------------------------------- growth */
+
+/* Four numbers, typed the same way as everything else in the app rather than
+   through form fields that would bring up the system keyboard on top of a
+   keypad. Each field holds the characters typed into it; the projection is
+   recomputed on every press, so there is nothing to submit. */
+const GROWTH_KEY = 'calcutron.growth';
+const MODE_KEY = 'calcutron.mode';
+
+const entries = FIELDS.map(({ key }) => [key, String(DEFAULTS[key])]);
+let growth = Object.fromEntries(entries);
+let activeField = FIELDS[0].key;
+let mode = 'calc';
+
+const fieldButtons = new Map();
+
+function readStored(key, fallback) {
+  try {
+    const stored = localStorage.getItem(key);
+    return stored === null ? fallback : stored;
+  } catch {
+    return fallback;
+  }
+}
+
+function store(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Private browsing with no storage: it works, it just forgets.
+  }
+}
+
+function loadGrowth() {
+  try {
+    const saved = JSON.parse(readStored(GROWTH_KEY, 'null'));
+    if (!saved) return;
+    for (const { key } of FIELDS) {
+      const raw = saved[key];
+      // Anything the fields would not accept today is dropped rather than
+      // trusted: what is in storage was written by an older version.
+      if (typeof raw === 'string' && accepts(key, raw)) growth[key] = raw;
+    }
+  } catch {
+    growth = Object.fromEntries(entries);
+  }
+}
+
+function buildFields() {
+  for (const spec of FIELDS) {
+    const button = document.createElement('button');
+    button.className = 'field';
+    button.type = 'button';
+    button.dataset.field = spec.key;
+
+    const label = document.createElement('span');
+    label.className = 'field__label';
+    label.textContent = spec.label;
+
+    const value = document.createElement('span');
+    value.className = 'field__value';
+
+    button.append(label, value);
+    growthFieldsEl.append(button);
+    fieldButtons.set(spec.key, { button, value });
+  }
+}
+
+function renderGrowth() {
+  for (const spec of FIELDS) {
+    const { button, value } = fieldButtons.get(spec.key);
+    value.textContent = formatField(spec.kind, growth[spec.key]);
+    button.setAttribute('aria-current', String(spec.key === activeField));
+    button.setAttribute('aria-label', `${spec.label}: ${value.textContent}`);
+  }
+
+  const numbers = Object.fromEntries(
+    FIELDS.map(({ key }) => [key, valueOfField(growth[key])]),
+  );
+  const result = project(numbers);
+
+  growthBalanceEl.textContent = formatMoney(result.balance);
+  growthSplitEl.textContent =
+    `${formatMoney(result.contributed)} in · ${formatMoney(result.growth)} growth`;
+
+  growthMarksEl.replaceChildren();
+  for (const { year, balance } of milestones(result)) {
+    const chip = document.createElement('span');
+    chip.className = 'mark-chip';
+    const when = document.createElement('b');
+    when.textContent = `${year}y`;
+    chip.append(when, formatMoney(balance));
+    growthMarksEl.append(chip);
+  }
+
+  store(GROWTH_KEY, JSON.stringify(growth));
+}
+
+function focusField(key) {
+  activeField = key;
+  renderGrowth();
+}
+
+function stepField(by) {
+  const at = FIELDS.findIndex(({ key }) => key === activeField);
+  const next = (at + by + FIELDS.length) % FIELDS.length;
+  focusField(FIELDS[next].key);
+}
+
+/** An edit only lands if the field will hold the result. */
+function editField(rewrite) {
+  const raw = rewrite(growth[activeField]);
+  if (accepts(activeField, raw)) growth[activeField] = raw;
+  renderGrowth();
+}
+
+function performGrowth(action, dataset) {
+  switch (action) {
+    // A field showing a lone zero is a field waiting to be replaced.
+    case 'digit':
+      editField((raw) => (raw === '0' ? dataset.digit : raw + dataset.digit));
+      break;
+    case 'decimal':
+      editField((raw) => (raw.includes('.') ? raw : `${raw || '0'}.`));
+      break;
+    case 'backspace':
+    case 'clearOrBack':
+      editField((raw) => raw.slice(0, -1));
+      break;
+    case 'clearAll':
+      editField(() => '');
+      break;
+    case 'nextField':
+    case 'equals':
+      stepField(1);
+      break;
+    case 'previousField':
+      stepField(-1);
+      break;
+    default:
+      // The calculator's own keys mean nothing here.
+  }
+}
+
+growthFieldsEl.addEventListener('pointerdown', (event) => {
+  if (event.button > 0) return;
+  const button = event.target.closest('.field');
+  if (!button) return;
+
+  button.classList.add('is-pressed');
+  pressedKeys.set(event.pointerId, button);
+  warmUp();
+  play('fn');
+  tap();
+  focusField(button.dataset.field);
+}, { passive: true });
+
+function setMode(next) {
+  mode = next;
+  appEl.dataset.mode = next;
+  modeToggle.textContent = next === 'growth' ? 'Calc' : 'Growth';
+  modeToggle.setAttribute(
+    'aria-label',
+    next === 'growth' ? 'Switch to the calculator' : 'Switch to the growth calculator',
+  );
+  store(MODE_KEY, next);
+  if (next === 'growth') renderGrowth();
+  else render();
+}
+
+modeToggle.addEventListener('click', () => {
+  play('fn');
+  tap();
+  setHistoryExpanded(false);
+  setMode(mode === 'growth' ? 'calc' : 'growth');
+});
+
+loadGrowth();
+buildFields();
+renderGrowth();
+
 renderSoundToggle();
 setChip(STATUS.IDLE);
 renderHistory();
 render();
+setMode(readStored(MODE_KEY, 'calc') === 'growth' ? 'growth' : 'calc');

@@ -31,10 +31,13 @@
 <script src="version.js"></script>
 </head>
 <body>
-<div class="app">
+<div class="app" data-mode="calc">
   <header class="topbar">
     <img class="mark" src="icons/calcutron.svg" alt="" width="30" height="30">
     <h1>Calcutron</h1>
+    <!-- Labelled with where it takes you, which is the only thing there is
+         room to say and the only thing worth saying. -->
+    <button class="chip chip--mode" id="modeToggle" type="button" aria-label="Switch to the growth calculator">Growth</button>
     <button class="chip chip--icon" id="soundToggle" type="button" data-level="soft" aria-label="Key sounds: soft. Tap for louder.">
       <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
         <path class="icon__speaker" d="M4 9.5h3.2L12 5.5v13L7.2 14.5H4z"/>
@@ -43,7 +46,7 @@
         <path class="icon__cross" d="M15.8 9.8l4.4 4.4M20.2 9.8l-4.4 4.4"/>
       </svg>
     </button>
-    <button class="chip" id="versionChip" type="button" aria-live="polite">v3.9.1</button>
+    <button class="chip" id="versionChip" type="button" aria-live="polite">v4.0.0</button>
   </header>
 
   <section class="history" aria-label="History">
@@ -68,6 +71,45 @@
       <div class="entryline" id="entryLine" aria-label="Expression"></div>
     </div>
   </section>
+
+  <!-- Compound growth. Same shape as the calculator: the answer up top, the
+       things you touch down by the thumb — and, like the keypad, the same two
+       blocks stand side by side when the window is short and wide. -->
+  <div class="growthwrap">
+  <section class="growth" id="growth" aria-label="Compound growth">
+    <div class="growth__answer">
+      <output class="growth__balance" id="growthBalance" aria-live="polite">$0</output>
+      <p class="growth__split" id="growthSplit"></p>
+    </div>
+    <div class="growth__marks" id="growthMarks" aria-label="Balance along the way"></div>
+    <div class="growth__fields" id="growthFields"></div>
+  </section>
+
+  <div class="growthpad" id="growthPad">
+    <button class="key" data-action="digit" data-digit="7">7</button>
+    <button class="key" data-action="digit" data-digit="8">8</button>
+    <button class="key" data-action="digit" data-digit="9">9</button>
+    <button class="key key--clear" data-action="backspace" aria-label="Delete">
+      <svg class="key__glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M8 5h12v14H8L2 12z"/>
+        <path d="M9.5 9.5l5 5M14.5 9.5l-5 5"/>
+      </svg>
+    </button>
+
+    <button class="key" data-action="digit" data-digit="4">4</button>
+    <button class="key" data-action="digit" data-digit="5">5</button>
+    <button class="key" data-action="digit" data-digit="6">6</button>
+    <button class="key key--fn" data-action="clearAll" aria-label="Clear this field">C</button>
+
+    <button class="key" data-action="digit" data-digit="1">1</button>
+    <button class="key" data-action="digit" data-digit="2">2</button>
+    <button class="key" data-action="digit" data-digit="3">3</button>
+    <button class="key key--eq key--tall" data-action="nextField" aria-label="Next field">Next</button>
+
+    <button class="key key--wide" data-action="digit" data-digit="0">0</button>
+    <button class="key" data-action="decimal" aria-label="Decimal point">.</button>
+  </div>
+  </div>
 
   <!-- Wrapper so landscape can stand the two side by side. It is
        `display: contents` in portrait, where the stack is what is wanted. -->

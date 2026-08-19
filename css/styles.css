@@ -437,6 +437,165 @@ body {
 
 .fx-toggle:active { background: var(--key-fn-press); transition-duration: 0s; }
 
+/* ---------------------------------------------------------------- growth */
+
+/* One screen at a time. Everything is in the markup either way, so switching
+   is an attribute rather than a teardown. Portrait wants the two stacked,
+   which the app's own column already does, so the wrapper dissolves. */
+.growthwrap { display: none; }
+.app[data-mode="growth"] .growthwrap { display: contents; }
+.app[data-mode="growth"] :is(.history, .display, .pads) { display: none; }
+
+.growth {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  gap: var(--gap);
+  /* Short screens scroll rather than squeezing the numbers out of legibility. */
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.growth::-webkit-scrollbar { display: none; }
+
+.growth__answer {
+  flex: 0 0 auto;
+  margin-top: auto;   /* Parks against the fields when there is room to spare. */
+  padding: 0 4px;
+  text-align: right;
+}
+
+.growth__balance {
+  display: block;
+  font-size: clamp(2rem, 11vw, 3rem);
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.growth__balance::-webkit-scrollbar { display: none; }
+
+.growth__split {
+  margin: 2px 0 0;
+  font-size: clamp(0.8rem, 3.4vw, 0.95rem);
+  color: var(--muted);
+}
+
+/* Where the money gets to along the way — the "what if I stopped earlier"
+   question, answered without retyping anything. */
+.growth__marks {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 6px;
+  padding: 0 4px 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.growth__marks::-webkit-scrollbar { display: none; }
+
+.mark-chip {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 5px 9px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  font-size: 0.76rem;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.mark-chip b {
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* The same flush block with hairline seams as the keypads, so the fields read
+   as something you press rather than a form. */
+.growth__fields {
+  flex: 0 0 auto;
+  display: grid;
+  gap: 1px;
+  background: var(--hairline);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.field {
+  -webkit-appearance: none;
+  appearance: none;
+  border: 0;
+  background: var(--key-fn);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 14px;
+  min-height: 42px;
+  text-align: left;
+  transition: background-color 140ms ease-out;
+  touch-action: none;
+}
+
+.field:active,
+.field.is-pressed { background: var(--key-fn-press); transition-duration: 0s; }
+
+.field__label {
+  font-size: 0.82rem;
+  color: var(--muted);
+  /* The value is the point; the label gives way first if the row is narrow. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.field__value {
+  font-size: clamp(1rem, 4.4vw, 1.25rem);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* The one being typed into. The bar down its edge does the job the caret does
+   on the expression line: it says the keys land here. */
+.field[aria-current="true"] {
+  background: var(--key);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.field[aria-current="true"] .field__value { color: var(--accent); }
+
+.field:focus-visible {
+  outline: 3px solid var(--eq);
+  outline-offset: -3px;
+}
+
+.growthpad {
+  flex: 0 0 auto;
+  margin-top: auto;
+  grid-template-columns: repeat(4, 1fr);
+  grid-template-rows: repeat(4, 1fr);
+  gap: 1px;
+  display: grid;
+  /* Four rows where the calculator has six, and a little less again: the four
+     fields above have to fit whole on the smallest phone without scrolling. */
+  height: calc(var(--keypad-height) * 0.55);
+  background: var(--hairline);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
 /* Portrait wants the two stacked, which is what the app's own column already
    does — so the wrapper gets out of the way entirely. */
 .pads { display: contents; }
@@ -670,4 +829,37 @@ body {
   .key { font-size: clamp(0.95rem, 3.2vh, 1.4rem); }
   .key--fn { font-size: clamp(0.85rem, 2.8vh, 1.2rem); }
   .key--op { font-size: clamp(1.05rem, 3.6vh, 1.6rem); }
+
+  /* Short and wide: the fields stand beside the pad rather than above it, the
+     same answer the keypad's fx column gives to the same problem. */
+  .app[data-mode="growth"] .growthwrap {
+    display: flex;
+    flex-direction: row;
+    gap: var(--gap);
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .growth { gap: 6px; }
+  .growth__answer { margin-top: 0; }
+  /* Answer at the top, fields at the bottom, so the column reads as full
+     rather than as content with a hole under it. */
+  .growth__fields { margin-top: auto; }
+  .growth__balance { font-size: clamp(1.5rem, 6vh, 2.1rem); }
+  .growth__split { font-size: 0.74rem; }
+  .field { min-height: 38px; }
+  .field__label { font-size: 0.74rem; }
+
+  /* A share of the row, not of the viewport: the app is capped at 560px wide,
+     so a vw-based width would take most of what there is. */
+  .growth { flex: 1 1 auto; min-width: 0; }
+
+  .growthpad {
+    flex: 0 0 42%;
+    width: auto;
+    height: auto;
+    min-height: 0;
+    margin-top: 0;
+    grid-template-rows: repeat(4, minmax(0, 1fr));
+  }
 }
