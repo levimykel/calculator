@@ -1,4 +1,4 @@
-import { Calculator, formatNumber, tokenParts } from './calculator.js';
+import { Calculator, formatNumber, tokenParts, isPlainNumber } from './calculator.js';
 import { History } from './history.js';
 import { play, warmUp, soundLevel, cycleSoundLevel } from './feedback.js';
 import { tap } from './haptics.js';
@@ -80,11 +80,13 @@ function render() {
     lastResult = result;
   }
 
-  const entry = state.errored ? '' : state.expression;
+  // A caret that has moved changes the line without changing its text, so it
+  // is part of what decides whether to redraw.
+  const caret = showCaret(state) ? state.caret : null;
+  const entry = state.errored ? '' : `${caret}\u0000${state.expression}`;
   if (entry !== lastEntry) {
-    entryLineEl.replaceChildren(state.errored ? '' : expressionNodes(state.tokens));
-    // Keep the tail of a long expression in view, where the typing is.
-    entryLineEl.scrollLeft = entryLineEl.scrollWidth;
+    entryLineEl.replaceChildren(state.errored ? '' : expressionNodes(state.tokens, caret));
+    scrollToCaret();
     lastEntry = entry;
   }
 
@@ -106,7 +108,27 @@ function render() {
 }
 
 function canBackspace(state) {
-  return !state.isEmpty && state.committed === null && !state.errored;
+  // Nothing behind the caret is nothing to delete, so the key reads as AC.
+  return !state.isEmpty && state.caret > 0 && state.committed === null && !state.errored;
+}
+
+/** A finished answer is not being edited, and neither is an empty line. */
+function showCaret(state) {
+  return !state.errored && !state.isEmpty && state.committed === null;
+}
+
+/** Keep the edit point in view, which for a fresh expression is its tail. */
+function scrollToCaret() {
+  const bar = entryLineEl.querySelector('.caret');
+  if (!bar) {
+    entryLineEl.scrollLeft = entryLineEl.scrollWidth;
+    return;
+  }
+  const line = entryLineEl.getBoundingClientRect();
+  const box = bar.getBoundingClientRect();
+  const margin = 14;
+  if (box.right > line.right - margin) entryLineEl.scrollLeft += box.right - line.right + margin;
+  else if (box.left < line.left + margin) entryLineEl.scrollLeft -= line.left - box.left + margin;
 }
 
 function lengthBucket(length) {
@@ -116,8 +138,11 @@ function lengthBucket(length) {
   return 'xs';
 }
 
-/** Which sound a key should make. */
+const SILENT = new Set(['caretLeft', 'caretRight', 'caretHome', 'caretEnd']);
+
+/** Which sound a key should make, or none for moving about. */
 function voiceFor(action) {
+  if (SILENT.has(action)) return null;
   if (action === 'equals') return 'equals';
   if (action === 'operator') return 'operator';
   if (action === 'digit' || action === 'decimal') return 'key';
@@ -158,6 +183,10 @@ function perform(action, dataset = {}) {
     case 'reciprocal': calc.reciprocal(); break;
     case 'sqrt': calc.call('sqrt'); break;
     case 'constant': calc.constant(dataset.constant); break;
+    case 'caretLeft': calc.moveCaret(-1); break;
+    case 'caretRight': calc.moveCaret(1); break;
+    case 'caretHome': calc.caretHome(); break;
+    case 'caretEnd': calc.caretEnd(); break;
     case 'openParen': calc.openParen(); break;
     case 'closeParen': calc.closeParen(); break;
     case 'backspace': calc.backspace(); break;
@@ -168,8 +197,9 @@ function perform(action, dataset = {}) {
 
 /** A key press: feedback first so it lands with the touch, then the maths. */
 function activate(action, dataset, withHaptics) {
-  play(voiceFor(action));
-  if (withHaptics) tap();
+  const voice = voiceFor(action);
+  if (voice) play(voice);
+  if (withHaptics && voice) tap();
   setHistoryExpanded(false);
   perform(action, dataset);
 }
@@ -292,10 +322,41 @@ function starNewest() {
   renderHistory();
 }
 
-/** Build one expression as text nodes plus operator chips. */
-function expressionNodes(tokens) {
+/**
+ * Build one expression as text nodes plus operator chips, with the caret drawn
+ * in at its position. A number is emitted a character at a time so the caret
+ * can land between two digits; the grouping commas go in between without
+ * counting as positions of their own.
+ */
+function expressionNodes(tokens, caret = null) {
   const fragment = document.createDocumentFragment();
-  for (const part of tokenParts(tokens)) {
+  const parts = tokenParts(tokens);
+  let pos = 0;
+
+  const caretHere = () => {
+    if (pos !== caret) return;
+    const bar = document.createElement('span');
+    bar.className = 'caret';
+    fragment.append(bar);
+  };
+
+  tokens.forEach((token, index) => {
+    const part = parts[index];
+
+    if (token.type === 'number' && isPlainNumber(token.text)) {
+      for (const character of part.text) {
+        if (character === ',') {
+          fragment.append(',');
+          continue;
+        }
+        caretHere();
+        fragment.append(character);
+        pos += 1;
+      }
+      return;
+    }
+
+    caretHere();
     // A sign belongs to its number, and a caret to the power it makes; only
     // the operators that separate two terms get a chip of their own.
     if (part.kind === 'operator' && !part.unary && !part.tight) {
@@ -303,10 +364,13 @@ function expressionNodes(tokens) {
       chip.className = 'chip-op';
       chip.textContent = part.text;
       fragment.append(chip);
-      continue;
+    } else {
+      fragment.append(document.createTextNode(part.text));
     }
-    fragment.append(document.createTextNode(part.text));
-  }
+    pos += 1;
+  });
+
+  caretHere();
   return fragment;
 }
 
@@ -419,6 +483,10 @@ const KEY_MAP = {
   C: ['clearAll', {}],
   n: ['negate', {}],
   N: ['negate', {}],
+  ArrowLeft: ['caretLeft', {}],
+  ArrowRight: ['caretRight', {}],
+  Home: ['caretHome', {}],
+  End: ['caretEnd', {}],
   '^': ['operator', { op: 'power' }],
   r: ['sqrt', {}],
   R: ['sqrt', {}],

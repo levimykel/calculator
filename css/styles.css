@@ -464,6 +464,25 @@ body {
 
 .entryline::-webkit-scrollbar { display: none; }
 
+/* The edit point. Its own element sitting between the characters rather than a
+   real text caret: the expression is spans and chips, not an input. The
+   negative margins keep it from nudging what it sits between. */
+.caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin: 0 -1px;
+  vertical-align: -0.16em;
+  border-radius: 1px;
+  background: var(--accent);
+  animation: caret-blink 1.06s step-end infinite;
+}
+
+@keyframes caret-blink {
+  0%, 55% { opacity: 1; }
+  56%, 100% { opacity: 0; }
+}
+
 /* Expanded, the history takes the keypad's room. The display stays so the
    working calculation is still in view while looking back.
    The keypad collapses to nothing rather than `display: none`, so it is never
@@ -582,6 +601,7 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .key { transition: none; }
   .history__toggle svg { transition: none; }
+  .caret { animation: none; }
 }
 
 /* Landscape phones: drop the chrome and let the keypad take the height it

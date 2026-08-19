@@ -254,6 +254,42 @@ export function valueOf(tokens) {
 
 /* ------------------------------------------------------------- the machine */
 
+/**
+ * The expression is edited at a caret, counted in stops from the left. A
+ * number offers one stop per typed character, since that is what you edit;
+ * every other token is one indivisible stop. A number whose display form is
+ * not simply its digits — an exponential result — offers no interior stops, so
+ * there is never a caret position that cannot be drawn.
+ */
+function tokenWidth(token) {
+  return token.type === 'number' && isPlainNumber(token.text) ? token.text.length : 1;
+}
+
+/** True when a number is shown as the characters it was typed as, plus commas,
+    and so can be edited a character at a time. */
+export function isPlainNumber(text) {
+  return numberText(text).replace(/,/g, '') === text;
+}
+
+export function caretMax(tokens) {
+  return tokens.reduce((total, token) => total + tokenWidth(token), 0);
+}
+
+/**
+ * Where a caret position falls. `offset` above zero means "inside that number,
+ * after that many characters"; zero means "at the boundary before that token",
+ * which for a number that follows another is also the end of the one before.
+ */
+export function locate(tokens, caret) {
+  let left = caret;
+  for (let index = 0; index < tokens.length; index += 1) {
+    const width = tokenWidth(tokens[index]);
+    if (left < width) return { index, offset: left };
+    left -= width;
+  }
+  return { index: tokens.length, offset: 0 };
+}
+
 export class Calculator {
   constructor() {
     this.reset();
@@ -261,13 +297,59 @@ export class Calculator {
 
   reset() {
     this.tokens = [];
+    this._caret = 0;
     this.committed = null;        // the expression text that produced a result
     this.committedTokens = null;  // and its tokens, for the history to render
     this.errored = false;
   }
 
-  get last() {
-    return this.tokens[this.tokens.length - 1];
+  /* The caret clamps on the way in and on the way out: a deletion can shorten
+     the expression behind a position that was already stored. */
+  get caret() {
+    return Math.min(this._caret, this.caretMax);
+  }
+
+  set caret(value) {
+    this._caret = Math.max(0, Math.min(value, this.caretMax));
+  }
+
+  get caretMax() {
+    return caretMax(this.tokens);
+  }
+
+  at() {
+    return locate(this.tokens, this.caret);
+  }
+
+  /** The token the caret sits after — what every entry rule reads. */
+  get before() {
+    const { index, offset } = this.at();
+    return offset > 0 ? this.tokens[index] : this.tokens[index - 1];
+  }
+
+  /**
+   * Groups open at the caret that nothing after it already closes — which is
+   * how many closing brackets can still be typed there. Walking on past the
+   * caret is what stops a `)` being added inside a group that is closed later,
+   * where it would unbalance the expression.
+   */
+  get closableDepth() {
+    const { index, offset } = this.at();
+    const from = offset > 0 ? index + 1 : index;
+
+    let depth = 0;
+    for (let i = 0; i < from; i += 1) {
+      if (this.tokens[i].type === 'open') depth += 1;
+      else if (this.tokens[i].type === 'close') depth -= 1;
+    }
+
+    let lowest = depth;
+    for (let i = from; i < this.tokens.length; i += 1) {
+      if (this.tokens[i].type === 'open') depth += 1;
+      else if (this.tokens[i].type === 'close') depth -= 1;
+      lowest = Math.min(lowest, depth);
+    }
+    return lowest;
   }
 
   get openDepth() {
@@ -290,7 +372,92 @@ export class Calculator {
       errored: this.errored,
       isEmpty: this.tokens.length === 0,
       openDepth: this.openDepth,
+      caret: this.caret,
+      caretMax: this.caretMax,
     };
+  }
+
+  /* ------------------------------------------------------------ the caret */
+
+  /**
+   * One press, one stop: through a number that is one digit, over anything
+   * else the whole token. Moving into a finished result takes it back to
+   * being an expression, so its digits can be corrected.
+   */
+  moveCaret(delta) {
+    if (this.errored) return this;
+    this.continueFromResult(true);
+    this.caret += delta;
+    return this;
+  }
+
+  caretTo(position) {
+    if (this.errored) return this;
+    this.continueFromResult(true);
+    this.caret = position;
+    return this;
+  }
+
+  caretHome() { return this.caretTo(0); }
+
+  caretEnd() { return this.caretTo(this.caretMax); }
+
+  /* ------------------------------------------------------------- editing */
+
+  /**
+   * Put tokens in at the caret, splitting the number it is inside if it is
+   * inside one, and leave the caret after what went in.
+   */
+  insert(...tokens) {
+    if (this.tokens.length + tokens.length > MAX_TOKENS) return this;
+    const { index, offset } = this.at();
+    const start = offset > 0 ? index + 1 : index;
+
+    if (offset > 0) {
+      const number = this.tokens[index];
+      this.tokens.splice(
+        index,
+        1,
+        { type: 'number', text: number.text.slice(0, offset) },
+        ...tokens,
+        { type: 'number', text: number.text.slice(offset) },
+      );
+    } else {
+      this.tokens.splice(index, 0, ...tokens);
+    }
+
+    this.caret += caretMax(tokens);
+
+    // Close both seams, trailing one first so the indices hold.
+    this.separate(start + tokens.length);
+    if (this.separate(start)) this.caret += 1;
+    return this;
+  }
+
+  /**
+   * The inverse of join(): where an edit has left one value touching the next,
+   * put the multiplication in explicitly. Two numbers side by side would read
+   * on screen as a single longer number while the parser multiplied them.
+   */
+  separate(at) {
+    const left = this.tokens[at - 1];
+    const right = this.tokens[at];
+    if (!endsValue(left) || !right || !VALUE_TOKENS.has(right.type)) return false;
+    this.tokens.splice(at, 0, { type: 'operator', op: 'multiply' });
+    return true;
+  }
+
+  /**
+   * Numbers left side by side by a deletion are joined rather than left
+   * touching: "2 + 3" losing its operator is 23, where juxtaposition would
+   * otherwise quietly make it 2 × 3.
+   */
+  join(at) {
+    const left = this.tokens[at - 1];
+    const right = this.tokens[at];
+    if (left?.type !== 'number' || right?.type !== 'number') return;
+    left.text += right.text;
+    this.tokens.splice(at, 1);
   }
 
   /** After `=`, the next keypress either starts over or builds on the result. */
@@ -298,7 +465,10 @@ export class Calculator {
     if (this.committed === null) return;
     this.committed = null;
     this.committedTokens = null;
-    if (!keepResult) this.tokens = [];
+    if (!keepResult) {
+      this.tokens = [];
+      this.caret = 0;
+    }
   }
 
   full() {
@@ -309,72 +479,112 @@ export class Calculator {
     if (this.errored) this.reset();
     this.continueFromResult(false);
 
-    const last = this.last;
-    if (last?.type === 'number') {
-      if (countDigits(last.text) >= MAX_ENTRY_DIGITS) return this;
-      last.text = last.text === '0' ? d : last.text + d;
+    const { index, offset } = this.at();
+
+    // Inside a number, the digit goes exactly where the caret is.
+    if (offset > 0) {
+      const number = this.tokens[index];
+      if (countDigits(number.text) >= MAX_ENTRY_DIGITS) return this;
+      number.text = number.text.slice(0, offset) + d + number.text.slice(offset);
+      this.caret += 1;
       return this;
     }
 
-    // A number straight after ")", "%" or "π" means multiplication; make it
-    // visible rather than leaving the parser to infer it.
-    if (endsValue(last)) this.push({ type: 'operator', op: 'multiply' });
-    return this.push({ type: 'number', text: d });
+    // Against either edge of a number, it extends that number.
+    const left = this.tokens[index - 1];
+    if (left?.type === 'number' && isPlainNumber(left.text)) {
+      return this.extend(left, (text) => (text === '0' ? d : text + d), 1);
+    }
+    const right = this.tokens[index];
+    if (right?.type === 'number' && isPlainNumber(right.text)) {
+      return this.extend(right, (text) => (text === '0' ? d : d + text), 1);
+    }
+
+    // Otherwise it starts a new one, multiplying if a value just ended.
+    return endsValue(left)
+      ? this.insert({ type: 'operator', op: 'multiply' }, { type: 'number', text: d })
+      : this.insert({ type: 'number', text: d });
+  }
+
+  /** Rewrite a number in place, keeping the caret on the far side of the edit. */
+  extend(number, rewrite, digits) {
+    if (digits && countDigits(number.text) >= MAX_ENTRY_DIGITS) return this;
+    const before = tokenWidth(number);
+    number.text = rewrite(number.text);
+    this.caret += Math.max(1, tokenWidth(number) - before);
+    return this;
   }
 
   decimal() {
     if (this.errored) this.reset();
     this.continueFromResult(false);
 
-    const last = this.last;
-    if (last?.type === 'number') {
-      if (!last.text.includes('.')) last.text += '.';
+    const { index, offset } = this.at();
+
+    if (offset > 0) {
+      const number = this.tokens[index];
+      if (number.text.includes('.')) return this;
+      number.text = `${number.text.slice(0, offset)}.${number.text.slice(offset)}`;
+      this.caret += 1;
       return this;
     }
-    if (endsValue(last)) this.push({ type: 'operator', op: 'multiply' });
-    return this.push({ type: 'number', text: '0.' });
+
+    const left = this.tokens[index - 1];
+    if (left?.type === 'number' && isPlainNumber(left.text)) {
+      return left.text.includes('.') ? this : this.extend(left, (text) => `${text}.`, 0);
+    }
+    const right = this.tokens[index];
+    if (right?.type === 'number' && isPlainNumber(right.text)) {
+      return right.text.includes('.') ? this : this.extend(right, (text) => `.${text}`, 0);
+    }
+
+    return endsValue(left)
+      ? this.insert({ type: 'operator', op: 'multiply' }, { type: 'number', text: '0.' })
+      : this.insert({ type: 'number', text: '0.' });
   }
 
   operator(op) {
     if (this.errored) return this;
     this.continueFromResult(true);
 
-    const last = this.last;
+    const left = this.before;
 
     // Nothing to operate on yet: only a leading minus makes sense.
-    if (!last || last.type === 'open') {
-      return op === 'subtract' ? this.push({ type: 'operator', op }) : this;
+    if (!left || left.type === 'open') {
+      return op === 'subtract' ? this.insert({ type: 'operator', op }) : this;
     }
 
-    if (last.type === 'operator') {
+    // A caret part-way through a number splits it: "12|3" then + is "12 + 3".
+    if (left.type === 'operator' && !this.at().offset) {
       // "5 × −" is a real thing to type, so a minus after an operator is kept
-      // as a unary sign. Anything else replaces the operator.
-      if (op === 'subtract' && !ADDITIVE.has(last.op)) return this.push({ type: 'operator', op });
-      last.op = op;
+      // as a unary sign. Anything else corrects the operator it follows.
+      if (op === 'subtract' && !ADDITIVE.has(left.op)) return this.insert({ type: 'operator', op });
+      left.op = op;
       return this;
     }
 
-    return this.push({ type: 'operator', op });
+    return this.insert({ type: 'operator', op });
   }
 
   openParen() {
     if (this.errored) this.reset();
     this.continueFromResult(false);
 
-    if (endsValue(this.last)) this.push({ type: 'operator', op: 'multiply' });
-    return this.push({ type: 'open' });
+    return endsValue(this.before)
+      ? this.insert({ type: 'operator', op: 'multiply' }, { type: 'open' })
+      : this.insert({ type: 'open' });
   }
 
   closeParen() {
     if (this.errored) return this;
     if (this.committed !== null) return this;
 
-    // Only closeable when something is open and the group has content in it.
-    if (this.openDepth <= 0) return this;
-    const last = this.last;
-    if (!last || last.type === 'operator' || last.type === 'open') return this;
+    // Only closeable when a group is open at the caret and has content in it.
+    if (this.closableDepth <= 0) return this;
+    const left = this.before;
+    if (!left || left.type === 'operator' || left.type === 'open') return this;
 
-    return this.push({ type: 'close' });
+    return this.insert({ type: 'close' });
   }
 
   /**
@@ -383,14 +593,25 @@ export class Calculator {
    * overwhelming majority of the time.
    */
   paren() {
-    const closeable = this.openDepth > 0
+    const { index, offset } = this.at();
+
+    // Sitting just inside a bracket that is already closed, the key steps over
+    // it the way it does in a text editor, rather than adding one that would
+    // unbalance the expression.
+    if (this.committed === null && offset === 0
+      && this.tokens[index]?.type === 'close' && this.closableDepth <= 0) {
+      this.caret += 1;
+      return this;
+    }
+
+    const closeable = this.closableDepth > 0
       && this.committed === null
-      && endsValue(this.last);
+      && endsValue(this.before);
     return closeable ? this.closeParen() : this.openParen();
   }
 
   /**
-   * Flip the sign of the number just typed, by adding or removing a unary
+   * Flip the sign of the number at the caret, by adding or removing a unary
    * minus in front of it. Reusing the sign token means "12 + −5" parses and
    * renders through the same path as a minus you typed yourself.
    */
@@ -398,34 +619,41 @@ export class Calculator {
     if (this.errored) return this;
     this.continueFromResult(true);
 
-    if (this.last?.type !== 'number') return this;
+    const { index, offset } = this.at();
+    const numberIndex = offset > 0 ? index : index - 1;
+    if (this.tokens[numberIndex]?.type !== 'number') return this;
 
-    const signIndex = this.tokens.length - 2;
+    const signIndex = numberIndex - 1;
     const sign = this.tokens[signIndex];
     const isSign = sign?.type === 'operator'
       && ADDITIVE.has(sign.op)
       && isUnaryAt(this.tokens, signIndex);
 
     if (isSign) {
-      if (sign.op === 'subtract') this.tokens.splice(signIndex, 1);
-      else sign.op = 'subtract';
+      if (sign.op === 'subtract') {
+        this.caret -= 1;
+        this.tokens.splice(signIndex, 1);
+      } else {
+        sign.op = 'subtract';
+      }
       return this;
     }
 
-    this.tokens.splice(this.tokens.length - 1, 0, { type: 'operator', op: 'subtract' });
+    this.tokens.splice(numberIndex, 0, { type: 'operator', op: 'subtract' });
+    this.caret += 1;
     return this;
   }
 
   /**
-   * A postfix — %, ², ⁻¹ — modifies the value just entered, so it only makes
-   * sense once there is one. They stack: 5²⁻¹ is a twenty-fifth.
+   * A postfix — %, ², ⁻¹ — modifies the value the caret sits after, so it only
+   * makes sense once there is one. They stack: 5²⁻¹ is a twenty-fifth.
    */
   postfix(type) {
     if (this.errored) return this;
     this.continueFromResult(true);
 
-    if (!endsValue(this.last)) return this;
-    return this.push({ type });
+    if (!endsValue(this.before)) return this;
+    return this.insert({ type });
   }
 
   percent() { return this.postfix('percent'); }
@@ -443,14 +671,17 @@ export class Calculator {
     if (this.errored) this.reset();
     this.continueFromResult(false);
 
-    if (endsValue(this.last)) this.push({ type: 'operator', op: 'multiply' });
-    return this.push({ type: 'constant', name });
+    return endsValue(this.before)
+      ? this.insert({ type: 'operator', op: 'multiply' }, { type: 'constant', name })
+      : this.insert({ type: 'constant', name });
   }
 
   /**
    * A function wraps the value already entered — "9" then √ is √(9), and a
-   * finished result gets rooted rather than thrown away. With no value to take,
-   * it opens its bracket and waits for one.
+   * finished result gets rooted rather than thrown away. A caret part-way
+   * through a number takes that whole number rather than splitting it, since
+   * half a number is not a value anyone means. With nothing to take, the
+   * function opens its bracket and waits for one.
    */
   call(fn) {
     if (!FUNCTIONS[fn]) return this;
@@ -458,30 +689,33 @@ export class Calculator {
     this.continueFromResult(true);
 
     const start = this.valueStart();
-    if (start !== null) {
-      if (this.tokens.length + 3 > MAX_TOKENS) return this;
-      // A group already carries its own brackets, so the function goes in
-      // front of it rather than adding a second pair.
-      if (this.tokens[start].type === 'open') {
-        this.tokens.splice(start, 0, { type: 'function', fn });
-        return this;
-      }
-      this.tokens.splice(start, 0, { type: 'function', fn }, { type: 'open' });
-      this.tokens.push({ type: 'close' });
+    if (start === null) return this.insert({ type: 'function', fn }, { type: 'open' });
+    if (this.tokens.length + 3 > MAX_TOKENS) return this;
+
+    // A group already carries its own brackets, so the function goes in front
+    // of it rather than adding a second pair.
+    if (this.tokens[start].type === 'open') {
+      this.tokens.splice(start, 0, { type: 'function', fn });
+      this.caret += 1;
       return this;
     }
 
-    this.push({ type: 'function', fn });
-    return this.push({ type: 'open' });
+    const { index, offset } = this.at();
+    const end = offset > 0 ? index + 1 : index;   // one past the value being wrapped
+    this.tokens.splice(end, 0, { type: 'close' });
+    this.tokens.splice(start, 0, { type: 'function', fn }, { type: 'open' });
+    this.caret = caretMax(this.tokens.slice(0, end + 3));
+    return this;
   }
 
   /**
-   * Where the value at the end of the expression starts, so a function can be
-   * wrapped around exactly that much of it. Null when the expression does not
-   * end in a value at all.
+   * Where the value the caret sits after starts, so a function can be wrapped
+   * around exactly that much of it. Null when nothing there is a value.
    */
   valueStart() {
-    let i = this.tokens.length - 1;
+    const { index, offset } = this.at();
+    let i = offset > 0 ? index : index - 1;
+
     // A postfix belongs to the value it modifies: √ of "5²" is √(5²).
     while (i >= 0 && POSTFIX_TYPES.has(this.tokens[i].type)) i -= 1;
     if (i < 0) return null;
@@ -516,12 +750,14 @@ export class Calculator {
     }
 
     this.tokens = [{ type: 'number', text: String(result) }];
+    this.caret = this.caretMax;
     this.committed = formatTokens(evaluated);
     // Kept separate from `tokens`, which now holds only the result.
     this.committedTokens = evaluated;
     return this;
   }
 
+  /** Delete the one stop behind the caret. */
   backspace() {
     if (this.errored) { this.reset(); return this; }
 
@@ -529,19 +765,44 @@ export class Calculator {
     // than letting you edit digits that were computed, not typed.
     if (this.committed !== null) { this.reset(); return this; }
 
-    const last = this.last;
-    if (!last) return this;
+    const { index, offset } = this.at();
 
-    if (last.type === 'number' && last.text.length > 1) {
-      last.text = last.text.slice(0, -1);
-      if (last.text === '-') this.tokens.pop();
+    // Each of these steps the caret back *before* shortening the expression:
+    // the caret clamps to the current length on read, so moving it afterwards
+    // would take it two stops instead of one.
+    if (offset > 0) {
+      const number = this.tokens[index];
+      this.caret -= 1;
+      number.text = number.text.slice(0, offset - 1) + number.text.slice(offset);
+      if (!countDigits(number.text)) this.drop(index);
       return this;
     }
 
-    this.tokens.pop();
-    // "√(" was inserted as one press, so it deletes as one too.
-    if (last.type === 'open' && this.last?.type === 'function') this.tokens.pop();
+    if (index === 0) return this;   // the caret is already at the front
+
+    const left = this.tokens[index - 1];
+    if (left.type === 'number' && isPlainNumber(left.text) && left.text.length > 1) {
+      this.caret -= 1;
+      left.text = left.text.slice(0, -1);
+      if (!countDigits(left.text)) this.drop(index - 1);
+      return this;
+    }
+
+    this.caret -= tokenWidth(left);
+    this.drop(index - 1);
+
+    // "√(" arrived as one press, so it goes as one.
+    if (left.type === 'open' && this.tokens[index - 2]?.type === 'function') {
+      this.caret -= 1;
+      this.drop(index - 2);
+    }
     return this;
+  }
+
+  /** Take a token out, closing the gap it leaves between two numbers. */
+  drop(index) {
+    this.tokens.splice(index, 1);
+    this.join(index);
   }
 
   /**
@@ -552,6 +813,7 @@ export class Calculator {
   loadTokens(tokens) {
     this.reset();
     this.tokens = tokens.slice(0, MAX_TOKENS).map((token) => ({ ...token }));
+    this.caret = this.caretMax;
     return this;
   }
 
@@ -560,20 +822,15 @@ export class Calculator {
     if (this.errored) this.reset();
     this.continueFromResult(false);
 
-    const last = this.last;
-    if (last?.type === 'number') return this; // A number is already being typed.
-    if (endsValue(last)) this.push({ type: 'operator', op: 'multiply' });
-    return this.push({ type: 'number', text: String(value) });
+    const left = this.before;
+    if (left?.type === 'number') return this; // A number is already being typed.
+    return endsValue(left)
+      ? this.insert({ type: 'operator', op: 'multiply' }, { type: 'number', text: String(value) })
+      : this.insert({ type: 'number', text: String(value) });
   }
 
   clearAll() {
     this.reset();
-    return this;
-  }
-
-  push(token) {
-    if (this.full()) return this;
-    this.tokens.push(token);
     return this;
   }
 }
@@ -605,7 +862,7 @@ export function tokenParts(tokens) {
   return tokens.map((token, index) => {
     switch (token.type) {
       case 'number':
-        return { kind: 'number', text: formatNumber(token.text) };
+        return { kind: 'number', text: numberText(token.text) };
       case 'operator':
         return {
           kind: 'operator',
@@ -639,6 +896,16 @@ export function formatTokens(tokens) {
   return tokenParts(tokens)
     .map((part) => (part.kind === 'operator' && !part.unary && !part.tight ? ` ${part.text} ` : part.text))
     .join('');
+}
+
+/**
+ * How a number appears inside an expression. An edit can leave one that is not
+ * a number at all — deleting the operator between 1.2 and 3.4 joins them into
+ * "1.23.4" — and that is shown as it stands, so it can be corrected a
+ * character at a time rather than reading as the word Error.
+ */
+export function numberText(text) {
+  return Number.isFinite(Number(text)) ? formatNumber(text) : text;
 }
 
 /** Render one number: grouped, sane length, sane exponents. */

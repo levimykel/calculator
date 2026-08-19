@@ -19,6 +19,8 @@ full screen and offline, like a native app.
 - The usual four operations, plus `%`, `±`, and a decimal point
 - An `fx` handle on the expression line opens a row of extra functions —
   `xʸ`, `x²`, `√`, `1/x` and `π` — and remembers whether you wanted it
+- A caret in the expression, so a mistake in the middle can be fixed without
+  retyping the rest. Arrow keys, Home and End move it (see the caveat below)
 - One bottom-left key that deletes while there is something to delete and
   clears everything otherwise; swiping across the display also deletes
 - Full keyboard support, so it is usable with an iPad keyboard or on a desktop
@@ -183,6 +185,38 @@ A few behaviours that are easy to get wrong, and are pinned by tests:
 - **`x²` and `1/x` are postfixes**, so they modify the value just entered the
   way `%` does, and they stack: `5²⁻¹` is a twenty-fifth.
 - **One press, one delete.** `√(` arrives as a pair and backspaces as a pair.
+
+## Editing at a caret
+
+The expression is edited at a caret rather than only from the end. It is
+counted in *stops* from the left: a number offers one stop per character,
+because characters are what you edit, and every other token is one indivisible
+stop — one arrow press steps over a whole `×`, `π` or `√(`. `locate()` turns a
+stop back into a token index and an offset within it, which is what every entry
+rule reads instead of "the last token".
+
+**Only a keyboard moves it so far.** Arrow keys, Home and End work on a
+hardware keyboard and on a desktop; there is no way to place the caret by touch
+yet, so on a phone it stays at the end and the app behaves as it always did.
+
+Two rules keep an edit from quietly changing what an expression means:
+
+- **`join()`** — deleting the operator between two numbers merges them.
+  Left touching, `2` and `3` would be juxtaposition, which the parser reads as
+  `2 × 3`; joined they are `23`, which is what deleting a `+` should give.
+- **`separate()`** — its inverse. Anything inserted that would leave one value
+  touching the next gets an explicit `×` at the seam, so `12 + |34` taking a
+  `7` from the history reads `12 + 7 × 34` rather than showing `734`.
+
+An edit can still leave a number that is not a number: deleting the `+` from
+`1.2 + 3.4` joins them into `1.23.4`. That is shown as it stands, with a blank
+preview, rather than as the word Error — it is still editable a character at a
+time, so the stray point can be taken out.
+
+The caret is drawn as its own element between the characters rather than as a
+real text caret, since the expression is spans and chips, not an input. Grouping
+commas are rendered between the digits without counting as stops of their own,
+so it lands at `1,23|4` and never inside the comma.
 
 ## The keypad
 
@@ -350,5 +384,10 @@ reference to the DOM, which is what makes it straightforward to test.
 - **`.app` already has a flex `gap`**, so a margin between two of its children
   adds to it rather than replacing it. The fx row's spacing comes from the gap
   alone, and the keypad's height subtracts that gap along with the row.
+- **Move the caret before the edit that shortens the expression, not after.**
+  It clamps to the current length when read, so a `caret -= 1` that follows a
+  deletion takes two stops instead of one. Every deletion path in
+  `js/calculator.js` steps the caret back first, and the clamp stays as the
+  backstop for a `join()` that shrinks things further.
 - **Icons** are generated from `icons/calcutron.svg`. If the artwork changes,
   re-export the PNGs at 32, 180, 192, and 512 px, plus the maskable 512 variant.

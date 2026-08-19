@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Calculator, formatNumber, formatTokens, valueOf, normalize } from '../js/calculator.js';
+import {
+  Calculator, formatNumber, formatTokens, valueOf, normalize, caretMax, locate,
+} from '../js/calculator.js';
 
 /** Drive the calculator with a compact script: "2+3*(4-1)=" */
 function run(script) {
@@ -25,6 +27,10 @@ function run(script) {
     else if (ch === 'r') calc.reciprocal();
     else if (ch === 'v') calc.call('sqrt');
     else if (ch === 'P') calc.constant('pi');
+    else if (ch === 'L') calc.moveCaret(-1);
+    else if (ch === 'R') calc.moveCaret(1);
+    else if (ch === '[') calc.caretHome();
+    else if (ch === ']') calc.caretEnd();
     else throw new Error(`unknown token ${ch}`);
   }
   return calc;
@@ -524,4 +530,158 @@ test('unknown constants and functions are ignored rather than thrown', () => {
   calc.constant('tau');
   calc.call('log');
   assert.equal(calc.state().expression, '');
+});
+
+/* ---------------------------------------------------------------- the caret */
+
+/** Where the caret ends up after a script. */
+const caretOf = (script) => run(script).state().caret;
+
+test('the caret starts and stays at the end while typing', () => {
+  assert.equal(caretOf(''), 0);
+  assert.equal(caretOf('123'), 3, 'one stop per digit');
+  assert.equal(caretOf('12+3'), 4, 'and one for the operator');
+  assert.equal(caretOf('12+3'), run('12+3').state().caretMax, 'which is the end');
+});
+
+test('a number offers one caret stop per character, everything else one', () => {
+  assert.equal(caretMax(run('123').tokens), 3);
+  assert.equal(caretMax(run('1+2').tokens), 3);
+  assert.equal(caretMax(run('(1)').tokens), 3);
+  assert.equal(caretMax(run('P').tokens), 1, 'a constant is one stop, not two');
+  assert.equal(caretMax(run('5q').tokens), 2, 'and so is a postfix');
+});
+
+test('a result too long to have been typed is one indivisible stop', () => {
+  // Exponential display cannot be matched up with the digits behind it, so it
+  // offers no interior positions rather than ones that cannot be drawn.
+  const calc = run('99999999999*99999999999=');
+  assert.match(calc.state().expression, /e/, 'the result is exponential');
+  assert.equal(calc.caretMax, 1);
+});
+
+test('the caret moves one stop at a time and stops at both ends', () => {
+  assert.equal(caretOf('123L'), 2);
+  assert.equal(caretOf('123LL'), 1);
+  assert.equal(caretOf('123LLLL'), 0, 'and no further');
+  assert.equal(caretOf('123LLR'), 2);
+  assert.equal(caretOf('123LLRRRR'), 3, 'nor past the end');
+  assert.equal(caretOf('12+3LL'), 2, 'an operator is a single step');
+});
+
+test('home and end jump to the ends', () => {
+  assert.equal(caretOf('12+34['), 0);
+  assert.equal(caretOf('12+34[]'), 5);
+});
+
+test('locate says which token the caret is in, and where', () => {
+  const tokens = run('12+3').tokens;
+  assert.deepEqual(locate(tokens, 0), { index: 0, offset: 0 }, 'before the 12');
+  assert.deepEqual(locate(tokens, 1), { index: 0, offset: 1 }, 'inside it');
+  assert.deepEqual(locate(tokens, 2), { index: 1, offset: 0 }, 'its end is the +\'s start');
+  assert.deepEqual(locate(tokens, 4), { index: 3, offset: 0 }, 'and the end is past everything');
+});
+
+test('a digit typed at the caret goes in there', () => {
+  assert.equal(shown('123L9'), '1,293');
+  assert.equal(shown('123LL9'), '1,923');
+  assert.equal(shown('123[9'), '9,123', 'at the front, it joins the number');
+  assert.equal(preview('123L9'), 1293);
+});
+
+test('a digit inside a bracketed number joins it rather than multiplying it', () => {
+  assert.equal(shown('(23)LLL9'), '(923)', 'not "(9 × 23)"');
+  assert.equal(preview('(23)LLL9'), 923);
+});
+
+test('an operator typed inside a number splits it', () => {
+  assert.equal(shown('123L+'), '12 + 3');
+  assert.equal(preview('123L+'), 15);
+  assert.equal(caretOf('123L+'), 3, 'with the caret after the operator');
+});
+
+test('an operator typed after an operator still corrects it', () => {
+  assert.equal(shown('12+3L*'), '12 × 3', 'the caret sits right after the +');
+});
+
+test('a decimal point goes in at the caret', () => {
+  assert.equal(shown('123L.'), '12.3');
+  assert.equal(preview('123L.'), 12.3);
+  assert.equal(shown('123L.L.'), '12.3', 'a number takes only one');
+});
+
+test('backspace deletes behind the caret, not off the end', () => {
+  assert.equal(shown('123L<'), '13');
+  assert.equal(caretOf('123L<'), 1);
+  assert.equal(shown('123LL<'), '23');
+  assert.equal(shown('123[<'), '123', 'at the front there is nothing behind it');
+});
+
+test('deleting an operator joins the numbers it separated', () => {
+  // Left touching, "2" and "3" would be juxtaposition — a silent 2 × 3.
+  assert.equal(shown('2+3L<'), '23');
+  assert.equal(preview('2+3L<'), 23);
+  assert.equal(caretOf('2+3L<'), 1, 'with the caret where the operator was');
+});
+
+test('joining two decimals leaves an expression that cannot be read yet', () => {
+  // Honest rather than clever: "1.2" and "3.4" merged is "1.23.4", which is
+  // not a number. The preview goes blank until it is edited into one.
+  const calc = run('1.2+3.4LLL<');
+  assert.equal(calc.state().preview, null);
+  assert.equal(calc.state().expression, '1.23.4', 'shown as typed, not as "Error"');
+  assert.equal(calc.caretMax, 6, 'and still editable a character at a time');
+  calc.moveCaret(1);
+  calc.moveCaret(1);
+  calc.backspace();
+  assert.equal(calc.state().expression, '1.234', 'so the stray point can be taken out');
+  assert.equal(calc.state().preview, 1.234);
+});
+
+test('a postfix and a function act at the caret', () => {
+  assert.equal(shown('12+34LLLq'), '12² + 34', 'squares the number behind the caret');
+  assert.equal(shown('12+34LLLv'), '√(12) + 34');
+});
+
+test('a function takes the whole number the caret is inside', () => {
+  // Half a number is not a value anyone means, so √ takes all of it.
+  assert.equal(shown('144Lv'), '√(144)');
+  assert.equal(caretOf('144Lv'), 6, 'with the caret past the closing bracket');
+});
+
+test('the parenthesis key reads the depth behind the caret', () => {
+  assert.equal(shown('(12)LLLp'), '((12)', 'outside the group it opens');
+  assert.equal(shown('(12)Lp'), '(12)', 'and inside a closed one it does not close twice');
+});
+
+test('a value pasted in from the history lands at the caret', () => {
+  const calc = run('12+34LL');
+  calc.insertValue(7);
+  // Landing next to the 34 would have read as "734", so the × goes in.
+  assert.equal(calc.state().expression, '12 + 7 × 34');
+});
+
+test('the caret goes to the end of whatever replaces the expression', () => {
+  assert.equal(caretOf('2+3='), 1, 'a result is one number');
+  assert.equal(caretOf('12+3=<'), 0, 'clearing it empties everything');
+
+  const calc = new Calculator();
+  calc.loadTokens(run('12*34=').state().committedTokens);
+  assert.equal(calc.state().caret, calc.state().caretMax);
+});
+
+test('moving into a finished result makes it editable again', () => {
+  const calc = run('2+3=');
+  assert.equal(calc.state().committed, '2 + 3');
+  calc.moveCaret(-1);
+  assert.equal(calc.state().committed, null, 'no longer a finished answer');
+  calc.digit('7');
+  assert.equal(calc.state().expression, '75', 'so its digits can be corrected');
+});
+
+test('the caret survives an expression getting shorter underneath it', () => {
+  const calc = run('12345');
+  calc.caretEnd();
+  calc.clearAll();
+  assert.equal(calc.state().caret, 0);
 });
