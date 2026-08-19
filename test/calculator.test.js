@@ -362,3 +362,39 @@ test('insertValue replaces a result rather than appending to it', () => {
   calc.insertValue(9);
   assert.equal(calc.state().expression, '9');
 });
+
+test('loadTokens replaces the expression so it can be edited and re-run', () => {
+  const source = run('2+3*4=');
+  const calc = new Calculator();
+  calc.loadTokens(source.state().committedTokens);
+  assert.equal(calc.state().expression, '2 + 3 × 4');
+  assert.equal(calc.state().preview, 14, 'and previews straight away');
+  assert.equal(calc.state().committed, null, 'as something still being typed');
+
+  calc.backspace();
+  calc.digit('5');
+  assert.equal(calc.equals().state().expression, '17', '2 + 3 × 5');
+});
+
+test('loadTokens copies, so editing cannot reach back into the history', () => {
+  const source = run('2+3=');
+  const stored = source.state().committedTokens;
+  const calc = new Calculator();
+  calc.loadTokens(stored);
+  calc.digit('9');
+  assert.equal(formatTokens(stored), '2 + 3', 'the original tokens are untouched');
+});
+
+test('loadTokens discards whatever was being typed', () => {
+  const calc = run('99+1');
+  calc.loadTokens(run('7*7=').state().committedTokens);
+  assert.equal(calc.state().expression, '7 × 7');
+});
+
+test('loadTokens clears an error state', () => {
+  const calc = run('5/0=');
+  assert.equal(calc.state().errored, true);
+  calc.loadTokens(run('1+1=').state().committedTokens);
+  assert.equal(calc.state().errored, false);
+  assert.equal(calc.state().expression, '1 + 1');
+});

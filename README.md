@@ -200,8 +200,11 @@ as small chips so a long expression stays scannable.
   The display stays, so the working calculation is still in view while you look
   back. It collapses again on the chevron, on recalling a row, or on the next
   thing you type — all of which mean you want the keypad back.
-- **Tap a row** to drop its result into whatever you are typing. Landing on a
-  closed group or another number inserts a `×` first.
+- **Each row has two targets, and they do what they show.** Tapping the number
+  drops that value into whatever you are typing — landing on a closed group or
+  another number inserts a `×` first. Tapping the expression underneath loads
+  the calculation itself, ready to edit and run again; the tokens are copied on
+  the way out, so editing cannot reach back into the stored entry.
 - **Star a row** — from the row itself or the `☆` key, which acts on the most
   recent calculation. A star means *keep this*: it is the only thing the star
   does, and it does it in two ways.

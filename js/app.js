@@ -281,22 +281,27 @@ function renderHistory() {
     star.setAttribute('aria-label', entry.favourite ? 'Unstar this calculation' : 'Star this calculation');
     star.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/></svg>';
 
-    const recall = document.createElement('button');
-    recall.type = 'button';
-    recall.className = 'entry__recall';
-    recall.dataset.recall = entry.id;
-    recall.setAttribute('aria-label', `Use ${formatNumber(entry.result)} from ${entry.expression}`);
+    // Two targets, mapped to what they show: the number gives you its value,
+    // the expression below gives you the calculation to edit and run again.
+    const body = document.createElement('div');
+    body.className = 'entry__body';
 
-    const result = document.createElement('span');
+    const result = document.createElement('button');
+    result.type = 'button';
     result.className = 'entry__result';
+    result.dataset.useResult = entry.id;
     result.textContent = formatNumber(entry.result);
+    result.setAttribute('aria-label', `Use the value ${formatNumber(entry.result)}`);
 
-    const expression = document.createElement('span');
+    const expression = document.createElement('button');
+    expression.type = 'button';
     expression.className = 'entry__expression';
+    expression.dataset.useExpression = entry.id;
+    expression.setAttribute('aria-label', `Edit the calculation ${entry.expression}`);
     expression.append(expressionNodes(entry.tokens));
 
-    recall.append(result, expression);
-    row.append(star, recall);
+    body.append(result, expression);
+    row.append(star, body);
     historyList.append(row);
   }
 
@@ -314,14 +319,19 @@ historyEl.addEventListener('click', (event) => {
     return;
   }
 
-  const recall = event.target.closest('[data-recall]');
-  if (!recall) return;
-  const entry = history.find(recall.dataset.recall);
+  const useResult = event.target.closest('[data-use-result]');
+  const useExpression = event.target.closest('[data-use-expression]');
+  const target = useResult || useExpression;
+  if (!target) return;
+
+  const entry = history.find(useResult ? useResult.dataset.useResult : useExpression.dataset.useExpression);
   if (!entry) return;
+
   warmUp();
   play('key');
   tap();
-  calc.insertValue(entry.result);
+  if (useResult) calc.insertValue(entry.result);
+  else calc.loadTokens(entry.tokens);
   setHistoryExpanded(false);
   render();
 });

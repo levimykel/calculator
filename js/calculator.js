@@ -408,6 +408,17 @@ export class Calculator {
     return this;
   }
 
+  /**
+   * Replace the expression with one from elsewhere — a history row — so it can
+   * be edited and run again. Tokens are copied, so editing here cannot reach
+   * back into the history entry they came from.
+   */
+  loadTokens(tokens) {
+    this.reset();
+    this.tokens = tokens.slice(0, MAX_TOKENS).map((token) => ({ ...token }));
+    return this;
+  }
+
   /** Put a value from elsewhere — a history row — into the expression. */
   insertValue(value) {
     if (this.errored) this.reset();
