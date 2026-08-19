@@ -13,6 +13,8 @@ const historyEl = document.getElementById('historyScroll');
 const historyList = document.getElementById('historyList');
 const historyEmpty = document.getElementById('historyEmpty');
 const clearHistoryBtn = document.getElementById('clearHistory');
+const expandBtn = document.getElementById('expandHistory');
+const appEl = document.querySelector('.app');
 
 const history = new History();
 const keypad = document.getElementById('keypad');
@@ -176,6 +178,7 @@ function perform(action, dataset = {}) {
 function activate(action, dataset, withHaptics) {
   play(voiceFor(action));
   if (withHaptics) tap();
+  setHistoryExpanded(false);
   perform(action, dataset);
 }
 
@@ -226,6 +229,27 @@ keypad.addEventListener('click', (event) => {
 
 /* ------------------------------------------------------------- history */
 
+/* Expanding hands the keypad's room to the history, for looking further back. */
+let historyExpanded = false;
+
+function setHistoryExpanded(next) {
+  const wanted = next && history.length > 0;
+  if (wanted === historyExpanded) return;
+  historyExpanded = wanted;
+  appEl.dataset.history = historyExpanded ? 'expanded' : 'collapsed';
+  expandBtn.setAttribute('aria-expanded', String(historyExpanded));
+  expandBtn.setAttribute('aria-label', historyExpanded ? 'Show less history' : 'Show more history');
+  // Keep the newest row against the display, where it was before expanding.
+  historyEl.scrollTop = historyEl.scrollHeight;
+  settle();
+}
+
+expandBtn.addEventListener('click', () => {
+  play('fn');
+  tap();
+  setHistoryExpanded(!historyExpanded);
+});
+
 function starNewest() {
   const newest = history.newest();
   if (!newest) return;
@@ -254,6 +278,8 @@ function renderHistory() {
 
   historyEmpty.hidden = entries.length > 0;
   clearHistoryBtn.hidden = entries.length === 0;
+  expandBtn.hidden = entries.length === 0;
+  if (entries.length === 0) setHistoryExpanded(false);
   historyList.replaceChildren();
 
   // Oldest first, so the newest ends up nearest the display — which is also
@@ -312,6 +338,7 @@ historyEl.addEventListener('click', (event) => {
   play('key');
   tap();
   calc.insertValue(entry.result);
+  setHistoryExpanded(false);
   render();
 });
 

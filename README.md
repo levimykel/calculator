@@ -194,6 +194,11 @@ Every completed calculation becomes a row above the display, newest at the
 bottom, showing the result with the expression beneath it. Operators are drawn
 as small chips so a long expression stays scannable.
 
+- **Expand the list** with the chevron beside Clear. The keypad steps aside and
+  the history takes its room, which turns roughly one visible row into eight.
+  The display stays, so the working calculation is still in view while you look
+  back. It collapses again on the chevron, on recalling a row, or on the next
+  thing you type — all of which mean you want the keypad back.
 - **Tap a row** to drop its result into whatever you are typing. Landing on a
   closed group or another number inserts a `×` first.
 - **Star a row** — from the row itself or the `☆` key, which acts on the most
@@ -242,6 +247,10 @@ reference to the DOM, which is what makes it straightforward to test.
 - **The main display line scrolls rather than shrinking forever.** Its size
   buckets in `js/app.js` are tuned so a full-length *result* still fits the
   narrowest phone; expressions longer than that scroll to follow the caret.
+- **Restate `display: none` for `[hidden]` on anything you gave a `display`.**
+  The expand control is `display: grid`, which outranks the user-agent rule for
+  the `hidden` attribute, so it stayed on screen with an empty history until the
+  rule was added back.
 - **Park a short history list with `margin-top: auto`, not `justify-content`.**
   Flex end-alignment pushes overflow out of the top of a scroll container,
   where it cannot be scrolled back to.

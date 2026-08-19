@@ -171,9 +171,40 @@ body {
 .history__bar {
   flex: 0 0 auto;
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
   min-height: 0;
 }
+
+.history__toggle {
+  -webkit-appearance: none;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 4px 8px 4px 2px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  touch-action: manipulation;
+}
+
+.history__toggle svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 180ms ease;
+}
+
+.history__toggle:active { color: var(--text); }
+/* `display: grid` above outranks the UA rule for [hidden], so restate it. */
+.history__toggle[hidden] { display: none; }
+/* Points down to grow the list over the keypad, and flips back to collapse. */
+.app[data-history="expanded"] .history__toggle svg { transform: rotate(180deg); }
 
 /* Only the rows scroll, so Clear never sits on top of one. */
 .history__scroll {
@@ -350,6 +381,10 @@ body {
 
 .entryline::-webkit-scrollbar { display: none; }
 
+/* Expanded, the history takes the keypad's room. The display stays so the
+   working calculation is still in view while looking back. */
+.app[data-history="expanded"] .keypad { display: none; }
+
 /* One flush block with hairline seams, the way the reference layout reads.
    The 1px gaps let the container colour through as the seams. */
 .keypad {
@@ -445,6 +480,7 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .key { transition: none; }
+  .history__toggle svg { transition: none; }
 }
 
 /* Landscape phones: drop the chrome and let the keypad take the height it
