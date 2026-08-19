@@ -194,8 +194,9 @@ Every completed calculation becomes a row above the display, newest at the
 bottom, showing the result with the expression beneath it. Operators are drawn
 as small chips so a long expression stays scannable.
 
-- **Expand the list** with the chevron beside Clear. The keypad steps aside and
-  the history takes its room, which turns roughly one visible row into eight.
+- **Expand the list** with the chevron beside Clear. The keypad collapses to
+  nothing — deliberately not `display: none`, so it is never torn out of the
+  layout and rebuilt — and the history takes its room, which turns roughly one visible row into eight.
   The display stays, so the working calculation is still in view while you look
   back. It collapses again on the chevron, on recalling a row, or on the next
   thing you type — all of which mean you want the keypad back.
@@ -247,6 +248,10 @@ reference to the DOM, which is what makes it straightforward to test.
 - **The main display line scrolls rather than shrinking forever.** Its size
   buckets in `js/app.js` are tuned so a full-length *result* still fits the
   narrowest phone; expressions longer than that scroll to follow the caret.
+- **In the installed app the bottom margin is a constant, not `env()`.**
+  Deriving it from the inset means the keypad drops to the screen edge if iOS
+  ever reports that inset differently mid-session. Same 20px, one fewer thing
+  that can change underneath it.
 - **Restate `display: none` for `[hidden]` on anything you gave a `display`.**
   The expand control is `display: grid`, which outranks the user-agent rule for
   the `hidden` attribute, so it stayed on screen with an empty history until the

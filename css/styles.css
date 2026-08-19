@@ -30,6 +30,14 @@
   --safe-bottom: min(env(safe-area-inset-bottom), 20px);
 }
 
+/* Installed, the margin is a constant rather than derived from env(). The
+   value is the same 20px, but it cannot go away if iOS reports the inset
+   differently at some point in the session — which would look exactly like the
+   keypad dropping to the bottom of the screen. */
+@media (display-mode: standalone) {
+  :root { --safe-bottom: 20px; }
+}
+
 * { box-sizing: border-box; }
 
 html, body {
@@ -382,8 +390,16 @@ body {
 .entryline::-webkit-scrollbar { display: none; }
 
 /* Expanded, the history takes the keypad's room. The display stays so the
-   working calculation is still in view while looking back. */
-.app[data-history="expanded"] .keypad { display: none; }
+   working calculation is still in view while looking back.
+   The keypad collapses to nothing rather than `display: none`, so it is never
+   torn out of the layout and rebuilt — Safari has been seen to come back from
+   that with the wrong geometry. */
+.app[data-history="expanded"] .keypad {
+  height: 0;
+  min-height: 0;
+  margin-top: 0;
+  visibility: hidden;
+}
 
 /* One flush block with hairline seams, the way the reference layout reads.
    The 1px gaps let the container colour through as the seams. */
