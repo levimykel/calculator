@@ -389,11 +389,10 @@ body {
    The 1px gaps let the container colour through as the seams. */
 .keypad {
   flex: 0 0 auto;
-  /* Pinned to the bottom of the app regardless of how the bands above size,
-     so no arrangement of them can leave slack underneath. --pull takes back
-     any residue that measures out below it at runtime (see settle() in app.js). */
+  /* Pinned to the bottom of the app's padding box regardless of how the bands
+     above size, so no arrangement of them can leave slack underneath. The gap
+     below it is --safe-bottom, and is meant to be there. */
   margin-top: auto;
-  margin-bottom: calc(-1 * var(--pull, 0px));
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   grid-template-rows: repeat(6, 1fr);

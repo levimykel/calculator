@@ -274,6 +274,9 @@ reference to the DOM, which is what makes it straightforward to test.
 - **Safe areas are CSS variables** so the fit tests can substitute real device
   values and check the layout against them — Playwright reports every inset as
   zero, which is why a whole class of iOS spacing bugs was invisible to them.
+  The substitution happens in an init script, *before* any page script runs, so
+  the app boots into the layout a real device gives it. Applying it after load
+  once hid a bug where load-time code ate the bottom margin.
 - **Long-press the header** for the layout numbers: viewport and screen
   height, where the app box and keypad end, any slack under the keypad, the
   measured safe-area insets, and whether iOS considers this a standalone app.
@@ -281,9 +284,6 @@ reference to the DOM, which is what makes it straightforward to test.
   are what iOS spacing bugs look like — comparing `viewport` against `screen` is
   what finally identified the status bar style as the cause of the band under
   the keypad.
-- **`settle()` in `js/app.js`** measures any residue below the keypad after
-  layout and pulls it back through `--pull`. It is a no-op when the layout
-  already ends flush, which is the normal case.
 - **The viewport meta carries no scale locking.** `maximum-scale` and
   `user-scalable=no` can affect how iOS sizes a standalone web view, so they
   are gone; `touch-action: pan-y` on `.app` refuses pinch-zoom instead, while

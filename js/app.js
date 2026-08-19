@@ -20,21 +20,6 @@ const history = new History();
 const keypad = document.getElementById('keypad');
 const diagEl = document.getElementById('diag');
 
-/**
- * Take back any space left under the keypad. The layout should already end
- * flush with the viewport, but iOS has been known to lay a standalone app out
- * a little short, and this costs nothing when there is nothing to reclaim.
- */
-function settle() {
-  keypad.style.setProperty('--pull', '0px');
-  const slack = window.innerHeight - keypad.getBoundingClientRect().bottom;
-  keypad.style.setProperty('--pull', `${Math.max(0, Math.round(slack))}px`);
-  if (!diagEl.hidden) diagEl.textContent = layoutReport();
-}
-
-window.addEventListener('resize', settle);
-window.addEventListener('orientationchange', () => setTimeout(settle, 150));
-
 /** Measure a safe-area inset by asking the browser to size an element by it. */
 function measureInset(side) {
   const probe = document.createElement('div');
@@ -241,7 +226,6 @@ function setHistoryExpanded(next) {
   expandBtn.setAttribute('aria-label', historyExpanded ? 'Show less history' : 'Show more history');
   // Keep the newest row against the display, where it was before expanding.
   historyEl.scrollTop = historyEl.scrollHeight;
-  settle();
 }
 
 expandBtn.addEventListener('click', () => {
@@ -526,4 +510,3 @@ renderSoundToggle();
 setChip(STATUS.IDLE);
 renderHistory();
 render();
-settle();
