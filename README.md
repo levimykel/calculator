@@ -29,7 +29,8 @@ full screen and offline, like a native app.
 - Light haptic feedback on each press, on platforms that allow it (not iOS —
   see below)
 - A second screen for compound growth: a starting amount, a monthly
-  contribution, a rate and a horizon, projected to a balance as you type
+  contribution, a rate and a horizon, projected to a balance as you type, with
+  a chart you can drag along to read any year
 - Works with no network once installed
 - Shows its version, and updates on your say-so rather than mid-calculation
 
@@ -40,10 +41,38 @@ the "what will this be worth in thirty years" arithmetic, which is tedious to
 do a keystroke at a time.
 
 Four numbers: a starting amount, a monthly contribution, an assumed annual
-return (7% to begin with) and a horizon in years. It answers with the balance,
-what you will have paid in against what the growth added, and the balance at
-each decade along the way — which is the "what if I stopped five years earlier"
-question, answered without retyping anything.
+return (7% to begin with) and a horizon in years. It answers with the balance
+and what you will have paid in against what the growth added.
+
+### The chart
+
+A stacked area: what you paid in along the bottom, what the growth added on
+top, the two together being the balance. It is the one picture that makes
+compounding obvious — the orange band starts as a sliver and ends up most of
+the height.
+
+**Drag along it** and the whole readout follows the finger: the year, the
+balance, and that year's split. Let go and it returns to the end of the term.
+That is the "what if I stopped five years earlier" question, answered without
+retyping anything — and it means there is no tooltip to place on a phone.
+
+The two hues are the app's teal and orange stepped down for the chart surface:
+the keypad's brighter versions fail the lightness band against `#161d33`. The
+pair `#00ab9c` / `#c9741f` was checked, not eyeballed — lightness band, chroma
+floor, colour-blind separation (ΔE 14.3 deutan) and contrast all pass. The two
+bands are named in the legend, so identity never rests on colour alone, and a
+2px gap in the surface colour separates the fills rather than a border.
+
+`js/chart.js` holds the geometry as plain arithmetic — where each year lands,
+where the growth band may start without closing that gap, which years get a
+label — so the part that is easy to get wrong invisibly is under test. The
+plot is measured rather than scaled: the SVG's viewBox is set to its real pixel
+size and redrawn on resize, which keeps hairlines hairline and text at its
+stated size.
+
+Values are not gated behind the drag: the balance, the split and the decade
+marks are all on screen without touching anything, and the plot's `aria-label`
+spells out the same numbers for anyone who cannot see it.
 
 **The maths.** Monthly compounding, with each contribution landing at the end
 of its month — an ordinary annuity, the convention every retirement calculator
@@ -429,6 +458,9 @@ reference to the DOM, which is what makes it straightforward to test.
 - **`.app` already has a flex `gap`**, so a margin between two of its children
   adds to it rather than replacing it. The fx row's spacing comes from the gap
   alone, and the keypad's height subtracts that gap along with the row.
+- **An SVG element has no `hidden` property.** `el.hidden = false` on a `<g>`
+  sets a JavaScript property and leaves the attribute — and the stylesheet —
+  exactly where they were. Use `toggleAttribute`.
 - **Two keypads means two of every digit.** The growth pad carries its own
   `7`, so anything looking a key up — the flash index, a test locator — has to
   say which pad it means. An unscoped `[data-digit]` now matches twice.

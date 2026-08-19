@@ -4,7 +4,7 @@
  *
  * Monthly compounding with the contribution landing at the end of each month —
  * an ordinary annuity, which is the convention every retirement calculator
- * uses and the conservative reading of "I put £500 in each month".
+ * uses and the conservative reading of "I put 500 in each month".
  *
  * Pure: no DOM. The UI feeds it four numbers and renders what comes back.
  */
@@ -60,8 +60,9 @@ const MONTHS = 12;
 
 /**
  * @returns {{balance: number, contributed: number, growth: number,
- *            series: number[]}} `series` is the balance at the end of each
- *            year, starting with year zero — the money you began with.
+ *            series: number[], paid: number[]}} `series` is the balance at the
+ *            end of each year, starting with year zero — the money you began
+ *            with — and `paid` is what had been put in by the same points.
  */
 export function project({ principal, monthly, rate, years }) {
   const start = clamp(principal, 0, field('principal').max);
@@ -73,29 +74,23 @@ export function project({ principal, monthly, rate, years }) {
   const monthlyRate = annual / 100 / MONTHS;
 
   const series = [start];
+  const paid = [start];
   let balance = start;
   for (let month = 1; month <= months; month += 1) {
     balance = balance * (1 + monthlyRate) + perMonth;
-    if (month % MONTHS === 0) series.push(balance);
+    if (month % MONTHS === 0) {
+      series.push(balance);
+      paid.push(start + perMonth * month);
+    }
   }
   // A term that is not whole years still ends where it ends.
-  if (months % MONTHS !== 0) series.push(balance);
+  if (months % MONTHS !== 0) {
+    series.push(balance);
+    paid.push(start + perMonth * months);
+  }
 
   const contributed = start + perMonth * months;
-  return { balance, contributed, growth: balance - contributed, series };
-}
-
-/**
- * The balance at each round decade inside the term, and at the end of it —
- * which is the "what if I stopped five years earlier" question, answered
- * without having to retype anything.
- */
-export function milestones({ series }) {
-  const last = series.length - 1;
-  const marks = [];
-  for (let year = 10; year < last; year += 10) marks.push(year);
-  if (last > 0) marks.push(last);
-  return marks.map((year) => ({ year, balance: series[year] }));
+  return { balance, contributed, growth: balance - contributed, series, paid };
 }
 
 function field(key) {

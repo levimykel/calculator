@@ -22,6 +22,13 @@
   --keypad-height: min(64dvh, 500px);
   --fx-height: clamp(42px, 7dvh, 56px);
 
+  /* The growth chart's two bands. Stepped down from the app's teal and orange
+     for the dark chart surface: validated for the lightness band, the chroma
+     floor, colour-blind separation and contrast, which the brighter keypad
+     versions of the same hues do not pass. */
+  --series-paid: #00ab9c;
+  --series-growth: #c9741f;
+
   /* Safe areas, as variables so they can be tuned in one place — and
      overridden in tests to check the layout against a real device's insets.
      The bottom one is capped at 20px: the full inset (34px on a recent iPhone)
@@ -462,6 +469,9 @@ body {
 .growth__answer {
   flex: 0 0 auto;
   margin-top: auto;   /* Parks against the fields when there is room to spare. */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
   padding: 0 4px;
   text-align: right;
 }
@@ -487,36 +497,96 @@ body {
   color: var(--muted);
 }
 
-/* Where the money gets to along the way — the "what if I stopped earlier"
-   question, answered without retyping anything. */
-.growth__marks {
-  flex: 0 0 auto;
-  display: flex;
-  gap: 6px;
-  padding: 0 4px 2px;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.growth__marks::-webkit-scrollbar { display: none; }
-
-.mark-chip {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: baseline;
-  gap: 5px;
-  padding: 5px 9px;
-  border: 1px solid var(--hairline);
-  border-radius: 999px;
+/* Which year the reading belongs to — the final one, or wherever the finger
+   is while the chart is being scrubbed. */
+.growth__when {
+  margin: 0;
   font-size: 0.76rem;
-  color: var(--text);
-  white-space: nowrap;
+  color: var(--muted);
+  order: -1;   /* Above the number it labels, whatever the markup order. */
 }
 
-.mark-chip b {
-  font-weight: 600;
+/* Doubles as the chart's legend, so the two bands are named and not left to
+   colour alone. The numbers are the same ones, so it costs no room. */
+.growth__legend {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 3px 14px;
+  padding: 0 4px;
+  font-size: clamp(0.76rem, 3.2vw, 0.9rem);
   color: var(--muted);
 }
+
+.swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  margin-right: -8px;   /* Sits with the number it belongs to, not the gap. */
+}
+
+.swatch--paid { background: var(--series-paid); }
+.swatch--growth { background: var(--series-growth); }
+
+/* ------------------------------------------------------------------ chart */
+
+.chart {
+  flex: 1 1 auto;
+  /* Gives way before the numbers do: on the smallest phone it is a sparkline,
+     on anything else it has room to be a chart. */
+  min-height: 56px;
+  margin: 0;
+  /* Dragging across it scrubs; it must not become a page gesture. */
+  touch-action: none;
+}
+
+.chart__plot {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+/* A wash rather than a block: the bands read as quantity, not as poster art. */
+.chart__fill--paid { fill: var(--series-paid); fill-opacity: 0.28; }
+.chart__fill--growth { fill: var(--series-growth); fill-opacity: 0.28; }
+
+.chart__line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.chart__line--paid { stroke: var(--series-paid); }
+.chart__line--growth { stroke: var(--series-growth); }
+
+.chart__base {
+  stroke: var(--hairline);
+  stroke-width: 1;
+}
+
+.chart__ticks text {
+  fill: var(--muted);
+  font-size: 10px;
+  text-anchor: middle;
+}
+
+.chart__crosshair {
+  stroke: var(--muted);
+  stroke-width: 1;
+}
+
+.chart__dot {
+  fill: var(--series-growth);
+  /* The surface ring keeps it legible where it sits on the line. */
+  stroke: var(--bg);
+  stroke-width: 2;
+}
+
+.chart__cursor[hidden] { display: none; }
 
 /* The same flush block with hairline seams as the keypads, so the fields read
    as something you press rather than a form. */
@@ -541,8 +611,8 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 8px 14px;
-  min-height: 42px;
+  padding: 7px 14px;
+  min-height: 40px;
   text-align: left;
   transition: background-color 140ms ease-out;
   touch-action: none;
@@ -588,9 +658,9 @@ body {
   grid-template-rows: repeat(4, 1fr);
   gap: 1px;
   display: grid;
-  /* Four rows where the calculator has six, and a little less again: the four
-     fields above have to fit whole on the smallest phone without scrolling. */
-  height: calc(var(--keypad-height) * 0.55);
+  /* Four rows where the calculator has six, and less again: the fields and the
+     chart above have to fit whole on the smallest phone without scrolling. */
+  height: calc(var(--keypad-height) * 0.44);
   background: var(--hairline);
   border-radius: var(--radius);
   overflow: hidden;
@@ -842,9 +912,9 @@ body {
 
   .growth { gap: 6px; }
   .growth__answer { margin-top: 0; }
-  /* Answer at the top, fields at the bottom, so the column reads as full
-     rather than as content with a hole under it. */
-  .growth__fields { margin-top: auto; }
+  .growth__when { font-size: 0.68rem; }
+  .growth__legend { font-size: 0.72rem; }
+  .chart { min-height: 60px; }
   .growth__balance { font-size: clamp(1.5rem, 6vh, 2.1rem); }
   .growth__split { font-size: 0.74rem; }
   .field { min-height: 38px; }

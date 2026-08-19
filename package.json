@@ -1,6 +1,6 @@
 {
   "name": "calcutron",
-  "version": "4.0.0",
+  "version": "4.1.0",
   "description": "A friendly little calculator PWA.",
   "private": true,
   "type": "module",

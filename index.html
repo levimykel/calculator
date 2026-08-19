@@ -46,7 +46,7 @@
         <path class="icon__cross" d="M15.8 9.8l4.4 4.4M20.2 9.8l-4.4 4.4"/>
       </svg>
     </button>
-    <button class="chip" id="versionChip" type="button" aria-live="polite">v4.0.0</button>
+    <button class="chip" id="versionChip" type="button" aria-live="polite">v4.1.0</button>
   </header>
 
   <section class="history" aria-label="History">
@@ -79,9 +79,26 @@
   <section class="growth" id="growth" aria-label="Compound growth">
     <div class="growth__answer">
       <output class="growth__balance" id="growthBalance" aria-live="polite">$0</output>
-      <p class="growth__split" id="growthSplit"></p>
+      <p class="growth__when" id="growthWhen"></p>
     </div>
-    <div class="growth__marks" id="growthMarks" aria-label="Balance along the way"></div>
+    <div class="growth__legend" id="growthLegend">
+      <span class="swatch swatch--paid"></span><span id="growthPaid"></span>
+      <span class="swatch swatch--growth"></span><span id="growthGrowth"></span>
+    </div>
+    <figure class="chart" id="chart">
+      <svg class="chart__plot" id="chartPlot" role="img" aria-label="Balance over time">
+        <path class="chart__fill chart__fill--paid" id="chartPaidFill"></path>
+        <path class="chart__line chart__line--paid" id="chartPaidLine"></path>
+        <path class="chart__fill chart__fill--growth" id="chartGrowthFill"></path>
+        <path class="chart__line chart__line--growth" id="chartTotalLine"></path>
+        <line class="chart__base" id="chartBase"></line>
+        <g class="chart__ticks" id="chartTicks"></g>
+        <g class="chart__cursor" id="chartCursor" hidden>
+          <line class="chart__crosshair" id="chartCrosshair"></line>
+          <circle class="chart__dot" id="chartDot" r="4"></circle>
+        </g>
+      </svg>
+    </figure>
     <div class="growth__fields" id="growthFields"></div>
   </section>
 

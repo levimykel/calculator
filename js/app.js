@@ -1,7 +1,8 @@
 import { Calculator, formatNumber, tokenParts, isPlainNumber } from './calculator.js';
 import {
-  FIELDS, DEFAULTS, project, milestones, formatMoney, formatField, valueOfField, accepts,
+  FIELDS, DEFAULTS, project, formatMoney, formatField, valueOfField, accepts,
 } from './growth.js';
+import { points, band, edge, yearAt, ticks } from './chart.js';
 import { History } from './history.js';
 import { play, warmUp, soundLevel, cycleSoundLevel } from './feedback.js';
 import { tap } from './haptics.js';
@@ -27,8 +28,20 @@ const growthPad = document.getElementById('growthPad');
 const modeToggle = document.getElementById('modeToggle');
 const growthFieldsEl = document.getElementById('growthFields');
 const growthBalanceEl = document.getElementById('growthBalance');
-const growthSplitEl = document.getElementById('growthSplit');
-const growthMarksEl = document.getElementById('growthMarks');
+const growthWhenEl = document.getElementById('growthWhen');
+const growthPaidEl = document.getElementById('growthPaid');
+const growthGrowthEl = document.getElementById('growthGrowth');
+const chartEl = document.getElementById('chart');
+const chartPlot = document.getElementById('chartPlot');
+const chartPaidFill = document.getElementById('chartPaidFill');
+const chartPaidLine = document.getElementById('chartPaidLine');
+const chartGrowthFill = document.getElementById('chartGrowthFill');
+const chartTotalLine = document.getElementById('chartTotalLine');
+const chartBase = document.getElementById('chartBase');
+const chartTicks = document.getElementById('chartTicks');
+const chartCursor = document.getElementById('chartCursor');
+const chartCrosshair = document.getElementById('chartCrosshair');
+const chartDot = document.getElementById('chartDot');
 const soundToggle = document.getElementById('soundToggle');
 const versionChip = document.getElementById('versionChip');
 
@@ -749,6 +762,11 @@ function buildFields() {
   }
 }
 
+/* Which year the readout is showing: the end of the term, or wherever a finger
+   is resting on the chart. */
+let scrubYear = null;
+let projection = null;
+
 function renderGrowth() {
   for (const spec of FIELDS) {
     const { button, value } = fieldButtons.get(spec.key);
@@ -757,27 +775,131 @@ function renderGrowth() {
     button.setAttribute('aria-label', `${spec.label}: ${value.textContent}`);
   }
 
-  const numbers = Object.fromEntries(
+  projection = project(Object.fromEntries(
     FIELDS.map(({ key }) => [key, valueOfField(growth[key])]),
-  );
-  const result = project(numbers);
+  ));
 
-  growthBalanceEl.textContent = formatMoney(result.balance);
-  growthSplitEl.textContent =
-    `${formatMoney(result.contributed)} in · ${formatMoney(result.growth)} growth`;
-
-  growthMarksEl.replaceChildren();
-  for (const { year, balance } of milestones(result)) {
-    const chip = document.createElement('span');
-    chip.className = 'mark-chip';
-    const when = document.createElement('b');
-    when.textContent = `${year}y`;
-    chip.append(when, formatMoney(balance));
-    growthMarksEl.append(chip);
-  }
-
+  renderReadout();
+  drawChart();
   store(GROWTH_KEY, JSON.stringify(growth));
 }
+
+/** The three numbers, for the year being looked at. */
+function renderReadout() {
+  const { series, paid } = projection;
+  const end = series.length - 1;
+  const at = scrubYear === null ? end : Math.min(scrubYear, end);
+
+  const balance = series[at];
+  const paidIn = paid[at];
+
+  growthWhenEl.textContent = at === 0 ? 'Today' : `At year ${at}`;
+  growthBalanceEl.textContent = formatMoney(balance);
+  growthPaidEl.textContent = `${formatMoney(paidIn)} paid in`;
+  growthGrowthEl.textContent = `${formatMoney(balance - paidIn)} growth`;
+}
+
+const CHART_BOTTOM = 15;   // room under the plot for the year labels
+
+function drawChart() {
+  const width = Math.round(chartEl.clientWidth);
+  const height = Math.round(chartEl.clientHeight);
+  if (!width || !height) return;   // Not on screen; nothing to measure against.
+
+  chartPlot.setAttribute('viewBox', `0 0 ${width} ${height}`);
+
+  const { series, paid } = projection;
+  const geometry = points(series, paid, { width, height, top: 4, bottom: CHART_BOTTOM });
+  const { at, baseline } = geometry;
+
+  chartPaidFill.setAttribute('d', band(at, baseline, (p) => p.paidTop, (p, base) => base));
+  chartPaidLine.setAttribute('d', edge(at, (p) => p.paidTop));
+  chartGrowthFill.setAttribute('d', band(at, baseline, (p) => p.total, (p) => p.growthBottom));
+  chartTotalLine.setAttribute('d', edge(at, (p) => p.total));
+
+  for (const [name, value] of Object.entries({ x1: 0, x2: width, y1: baseline, y2: baseline })) {
+    chartBase.setAttribute(name, String(value));
+  }
+
+  const years = series.length - 1;
+  chartTicks.replaceChildren();
+  for (const year of ticks(years)) {
+    const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    label.textContent = `${year}y`;
+    // Nudged in at the ends so the label never hangs off the plot.
+    const x = at[Math.min(year, at.length - 1)].x;
+    label.setAttribute('x', String(Math.min(Math.max(x, 12), width - 12)));
+    label.setAttribute('y', String(height - 3));
+    chartTicks.append(label);
+  }
+
+  chartPlot.setAttribute('aria-label', chartSummary());
+  drawCursor(geometry);
+}
+
+function chartSummary() {
+  const { series, paid } = projection;
+  const years = series.length - 1;
+  const end = series.length - 1;
+  const along = ticks(years)
+    .map((year) => `year ${year}, ${formatMoney(series[year])}`)
+    .join('; ');
+  return `Balance from ${formatMoney(series[0])} to ${formatMoney(series[end])} over `
+    + `${years} years: ${formatMoney(paid[end])} paid in, `
+    + `${formatMoney(series[end] - paid[end])} growth. Along the way — ${along}.`;
+}
+
+function drawCursor(geometry) {
+  const showing = scrubYear !== null && geometry.at.length > 1;
+  // An SVG element has no `hidden` property to assign to — only the attribute,
+  // which is what the stylesheet is looking at.
+  chartCursor.toggleAttribute('hidden', !showing);
+  if (!showing) return;
+
+  const point = geometry.at[Math.min(scrubYear, geometry.at.length - 1)];
+  chartCrosshair.setAttribute('x1', String(point.x));
+  chartCrosshair.setAttribute('x2', String(point.x));
+  chartCrosshair.setAttribute('y1', String(point.total));
+  chartCrosshair.setAttribute('y2', String(geometry.baseline));
+  chartDot.setAttribute('cx', String(point.x));
+  chartDot.setAttribute('cy', String(point.total));
+}
+
+/* Dragging along the chart reads it year by year. The whole readout follows,
+   so there is no tooltip to place — and every value is on screen without
+   touching anything in the first place. */
+function scrubTo(event) {
+  const box = chartEl.getBoundingClientRect();
+  const years = projection.series.length - 1;
+  const year = yearAt(event.clientX - box.left, box.width, years);
+  if (year === scrubYear) return;
+  scrubYear = year;
+  renderReadout();
+  drawChart();
+}
+
+chartEl.addEventListener('pointerdown', (event) => {
+  if (event.button > 0) return;
+  chartEl.setPointerCapture(event.pointerId);
+  scrubTo(event);
+});
+
+chartEl.addEventListener('pointermove', (event) => {
+  if (scrubYear === null) return;
+  scrubTo(event);
+});
+
+for (const name of ['pointerup', 'pointercancel', 'pointerleave']) {
+  chartEl.addEventListener(name, () => {
+    if (scrubYear === null) return;
+    scrubYear = null;
+    renderReadout();
+    drawChart();
+  });
+}
+
+// The plot is measured, not scaled, so it has to be redrawn at a new size.
+new ResizeObserver(() => { if (mode === 'growth' && projection) drawChart(); }).observe(chartEl);
 
 function focusField(key) {
   activeField = key;
@@ -794,6 +916,7 @@ function stepField(by) {
 function editField(rewrite) {
   const raw = rewrite(growth[activeField]);
   if (accepts(activeField, raw)) growth[activeField] = raw;
+  scrubYear = null;   // The projection just moved out from under the reading.
   renderGrowth();
 }
 

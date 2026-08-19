@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  FIELDS, DEFAULTS, project, milestones, formatMoney, formatField, valueOfField, accepts,
+  FIELDS, DEFAULTS, project, formatMoney, formatField, valueOfField, accepts,
 } from '../js/growth.js';
 
 /** Rounded to the penny, which is as exact as money gets. */
@@ -66,19 +66,19 @@ test('a part-year term still ends where it ends', () => {
   assert.equal(series.at(-1), 1800, 'eighteen months of payments');
 });
 
-test('milestones mark each decade, and the end', () => {
-  const marks = (years) => milestones(project({ ...DEFAULTS, years })).map((m) => m.year);
-  assert.deepEqual(marks(30), [10, 20, 30]);
-  assert.deepEqual(marks(25), [10, 20, 25], 'the term itself is always the last one');
-  assert.deepEqual(marks(7), [7]);
-  assert.deepEqual(marks(0), [], 'nothing has happened, so there is nothing to mark');
-});
-
-test('a milestone reads the same as running the shorter projection', () => {
+test('a year inside the series reads the same as running the shorter projection', () => {
+  // Which is what lets the chart be scrubbed without recomputing anything.
   const full = project({ ...DEFAULTS, years: 30 });
   const short = project({ ...DEFAULTS, years: 20 });
-  const twenty = milestones(full).find((m) => m.year === 20);
-  assert.equal(pennies(twenty.balance), pennies(short.balance));
+  assert.equal(pennies(full.series[20]), pennies(short.balance));
+  assert.equal(pennies(full.paid[20]), pennies(short.contributed));
+});
+
+test('paid tracks the series year for year', () => {
+  const { series, paid } = project({ principal: 1000, monthly: 100, rate: 5, years: 4 });
+  assert.equal(series.length, paid.length);
+  assert.deepEqual(paid, [1000, 2200, 3400, 4600, 5800], 'the pot plus twelve payments a year');
+  assert.ok(series.every((balance, year) => balance >= paid[year]), 'growth is never negative');
 });
 
 test('the inputs are clamped rather than trusted', () => {
