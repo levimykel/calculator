@@ -43,7 +43,7 @@
         <path class="icon__cross" d="M15.8 9.8l4.4 4.4M20.2 9.8l-4.4 4.4"/>
       </svg>
     </button>
-    <button class="chip" id="versionChip" type="button" aria-live="polite">v3.6.0</button>
+    <button class="chip" id="versionChip" type="button" aria-live="polite">v3.7.0</button>
   </header>
 
   <p class="diag" id="diag" hidden></p>
@@ -63,8 +63,26 @@
 
   <section class="display">
     <output class="result" id="result" aria-label="Result" aria-live="polite" aria-atomic="true">0</output>
-    <div class="entryline" id="entryLine" aria-label="Expression"></div>
+    <div class="display__row">
+      <!-- Sat in the space to the left of the expression, which was empty, so
+           the extra functions cost no height until they are asked for. -->
+      <button class="fx-toggle" id="fxToggle" type="button" aria-expanded="false" aria-controls="fxPad" aria-label="Show more functions">fx</button>
+      <div class="entryline" id="entryLine" aria-label="Expression"></div>
+    </div>
   </section>
+
+  <!-- Wrapper so landscape can stand the two side by side. It is
+       `display: contents` in portrait, where the stack is what is wanted. -->
+  <div class="pads">
+  <div class="fxpad" id="fxPad" hidden>
+    <!-- One span per label: the keys centre a single grid item, and a bare
+         <sup> alongside the x would be centred as a second one, under it. -->
+    <button class="key key--fn" data-action="operator" data-op="power" aria-label="To the power of"><span>x<sup>y</sup></span></button>
+    <button class="key key--fn" data-action="square" aria-label="Squared"><span>x<sup>2</sup></span></button>
+    <button class="key key--fn" data-action="sqrt" aria-label="Square root">&#8730;</button>
+    <button class="key key--fn" data-action="reciprocal" aria-label="Reciprocal">1/x</button>
+    <button class="key key--fn" data-action="constant" data-constant="pi" aria-label="Pi">&#960;</button>
+  </div>
 
   <div class="keypad" id="keypad">
     <button class="key key--fn" data-action="negate" aria-label="Toggle sign">±</button>
@@ -104,6 +122,7 @@
       </svg>
     </button>
     <button class="key key--eq key--wide" data-action="equals" aria-label="Equals">=</button>
+  </div>
   </div>
 
 <script type="module" src="js/app.js"></script>

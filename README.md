@@ -17,6 +17,8 @@ full screen and offline, like a native app.
 - The result reads large with the expression beneath it, the same shape as the
   history rows, and it updates live as you type
 - The usual four operations, plus `%`, `±`, and a decimal point
+- An `fx` handle on the expression line opens a row of extra functions —
+  `xʸ`, `x²`, `√`, `1/x` and `π` — and remembers whether you wanted it
 - One bottom-left key that deletes while there is something to delete and
   clears everything otherwise; swiping across the display also deletes
 - Full keyboard support, so it is usable with an iPad keyboard or on a desktop
@@ -136,13 +138,20 @@ is a recursive-descent parse:
 ```
 expression := term (('+' | '−') term)*
 term       := unary (('×' | '÷' | juxtaposition) unary)*
-unary      := ('−' | '+') unary | postfix
-postfix    := primary '%'*
-primary    := number | '(' expression ')'
+unary      := ('−' | '+') unary | power
+power      := postfix ('^' unary)?
+postfix    := primary ('%' | '²' | '⁻¹')*
+primary    := number | constant | function '(' expression ')' | '(' expression ')'
 ```
 
 Precedence falls out of the nesting: `term` binds tighter than `expression`, so
 × and ÷ are applied before + and −, and parentheses restart the cycle.
+
+`power` sits between `unary` and `postfix`, which gives it the two conventions
+people expect from writing it on paper: it binds tighter than × so `2 × 3^2` is
+18, and `−2²` is −4 because the sign applies to the result. Its right operand is
+a `unary`, so it is right-associative — `2^3^2` is 512, not 64 — and `2^−1` is
+typeable.
 
 A few behaviours that are easy to get wrong, and are pinned by tests:
 
@@ -163,7 +172,17 @@ A few behaviours that are easy to get wrong, and are pinned by tests:
   delete. A committed result and an error both read as AC, since neither is
   editable a character at a time. The physical Backspace key always deletes.
 - **Juxtaposition means multiplication.** The keypad inserts a visible `×` when
-  you type `2(`, and the parser accepts the bare form too.
+  you type `2(`, and the parser accepts the bare form too. `π` counts as a
+  value, so `2π` becomes `2 × π`.
+- **A function takes the value you have already entered.** Pressing `√` after
+  typing `9` gives `√(9)`, not a new bracket beside it — and only that value, so
+  `2 + 9` then `√` is `2 + √(9)`. It takes postfixes with it (`5²` becomes
+  `√(5²)`), reuses brackets a group already has, and wraps a finished result
+  rather than discarding it. With nothing to take, it opens its bracket and
+  waits for an argument.
+- **`x²` and `1/x` are postfixes**, so they modify the value just entered the
+  way `%` does, and they stack: `5²⁻¹` is a twenty-fifth.
+- **One press, one delete.** `√(` arrives as a pair and backspaces as a pair.
 
 ## The keypad
 
@@ -187,6 +206,25 @@ colour change instead of the previous nudge.
 
 The colours stay Calcutron's rather than Calcbot's — orange operators, teal `=`,
 red `C` — so only the arrangement is borrowed.
+
+### The fx row
+
+The grid is full, and the five extra functions are not wanted often enough to
+displace anything on it. So they live behind an `fx` handle in the space to the
+left of the expression, which was empty — the handle costs no height, and the
+choice is remembered between launches.
+
+```
+xʸ   x²   √   1/x   π
+```
+
+Open, the row comes *out of* the keypad's height budget rather than on top of
+it, so the block below the display is the same size either way and the keys
+never shift. In a short landscape window height is the scarce thing and width is
+not, so the same five keys stand in a column beside the keypad instead, where
+they cost nothing at all.
+
+From a keyboard: `^` for the power, `r` for the root, `p` for pi.
 
 ## History
 
@@ -296,5 +334,21 @@ reference to the DOM, which is what makes it straightforward to test.
   `user-scalable=no` can affect how iOS sizes a standalone web view, so they
   are gone; `touch-action: pan-y` on `.app` refuses pinch-zoom instead, while
   leaving the history scrollable.
+- **A key that centres its label centres each child separately.** `.key` is a
+  `display: grid` with `place-items: center`, so `x<sup>y</sup>` put the `y`
+  *underneath* the `x` as a second grid item. Wrap a multi-part label in one
+  span.
+- **An auto top margin behaves differently in a row.** `.keypad` uses
+  `margin-top: auto` to pin itself to the bottom of the app's column. In the
+  landscape layout, where it sits in a row beside the fx column, that same
+  margin pushes it *across* the cross axis instead of filling it, and the keys
+  collapsed to a third of their height until it was reset to 0 there.
+- **`display: contents` is how the fx wrapper stays invisible in portrait.**
+  The `.pads` div exists only so landscape can stand the two blocks side by
+  side; in portrait it dissolves, and the column layout is byte-identical to
+  what it was before the wrapper existed.
+- **`.app` already has a flex `gap`**, so a margin between two of its children
+  adds to it rather than replacing it. The fx row's spacing comes from the gap
+  alone, and the keypad's height subtracts that gap along with the row.
 - **Icons** are generated from `icons/calcutron.svg`. If the artwork changes,
   re-export the PNGs at 32, 180, 192, and 512 px, plus the maskable 512 variant.

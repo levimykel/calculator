@@ -18,6 +18,8 @@ const appEl = document.querySelector('.app');
 
 const history = new History();
 const keypad = document.getElementById('keypad');
+const fxPad = document.getElementById('fxPad');
+const fxToggle = document.getElementById('fxToggle');
 const diagEl = document.getElementById('diag');
 
 /** Measure a safe-area inset by asking the browser to size an element by it. */
@@ -47,9 +49,10 @@ const versionChip = document.getElementById('versionChip');
 // Looked up once: render() runs on every keypress and should not be querying.
 const keysByAction = new Map();
 const keysByDigit = new Map();
-for (const key of keypad.querySelectorAll('.key')) {
+for (const key of document.querySelectorAll('.keypad .key, .fxpad .key')) {
   if (key.dataset.digit) keysByDigit.set(key.dataset.digit, key);
   else if (key.dataset.op) keysByAction.set(`op:${key.dataset.op}`, key);
+  else if (key.dataset.constant) keysByAction.set(`const:${key.dataset.constant}`, key);
   else keysByAction.set(key.dataset.action, key);
 }
 
@@ -151,6 +154,10 @@ function perform(action, dataset = {}) {
       if (canBackspace(calc.state())) calc.backspace();
       else calc.clearAll();
       break;
+    case 'square': calc.square(); break;
+    case 'reciprocal': calc.reciprocal(); break;
+    case 'sqrt': calc.call('sqrt'); break;
+    case 'constant': calc.constant(dataset.constant); break;
     case 'openParen': calc.openParen(); break;
     case 'closeParen': calc.closeParen(); break;
     case 'backspace': calc.backspace(); break;
@@ -175,7 +182,12 @@ let lastPointerAt = 0;
 // releasing one must not leave the other stuck looking pressed.
 const pressedKeys = new Map();
 
-keypad.addEventListener('pointerdown', (event) => {
+function bindKeys(pad) {
+  pad.addEventListener('pointerdown', onPadPointerDown, { passive: true });
+  pad.addEventListener('click', onPadClick);
+}
+
+function onPadPointerDown(event) {
   if (event.button > 0) return;
   const key = event.target.closest('.key');
   if (!key) return;
@@ -188,7 +200,7 @@ keypad.addEventListener('pointerdown', (event) => {
 
   warmUp();
   activate(key.dataset.action, key.dataset, true);
-}, { passive: true });
+}
 
 /* Listened for on the window so a finger that slides off a key still releases
    it, rather than leaving the key stuck looking pressed. */
@@ -205,11 +217,50 @@ window.addEventListener('pointercancel', releaseKey, { passive: true });
 
 /* Still needed for Space/Enter on a focused key, which produce a click with no
    pointer event. The timestamp guard stops a real tap counting twice. */
-keypad.addEventListener('click', (event) => {
+function onPadClick(event) {
   const key = event.target.closest('.key');
   if (!key) return;
   if (event.timeStamp - lastPointerAt < 700) return;
   activate(key.dataset.action, key.dataset, false);
+}
+
+bindKeys(keypad);
+bindKeys(fxPad);
+
+/* ------------------------------------------------------------- functions */
+
+/* The fx row is remembered between launches: someone who uses powers wants it
+   there every time, and someone who does not never sees it. */
+const FX_KEY = 'calcutron.fx';
+let fxOpen = readFxPreference();
+
+function readFxPreference() {
+  try {
+    return localStorage.getItem(FX_KEY) === 'open';
+  } catch {
+    return false;
+  }
+}
+
+function setFxOpen(next) {
+  fxOpen = next;
+  fxPad.hidden = !next;
+  appEl.dataset.fx = next ? 'open' : 'closed';
+  fxToggle.setAttribute('aria-expanded', String(next));
+  fxToggle.setAttribute('aria-label', next ? 'Hide more functions' : 'Show more functions');
+  try {
+    localStorage.setItem(FX_KEY, next ? 'open' : 'closed');
+  } catch {
+    // Private browsing with no storage: the row still works, it just forgets.
+  }
+}
+
+setFxOpen(fxOpen);
+
+fxToggle.addEventListener('click', () => {
+  play('fn');
+  tap();
+  setFxOpen(!fxOpen);
 });
 
 /* ------------------------------------------------------------- history */
@@ -245,7 +296,9 @@ function starNewest() {
 function expressionNodes(tokens) {
   const fragment = document.createDocumentFragment();
   for (const part of tokenParts(tokens)) {
-    if (part.kind === 'operator' && !part.unary) {
+    // A sign belongs to its number, and a caret to the power it makes; only
+    // the operators that separate two terms get a chip of their own.
+    if (part.kind === 'operator' && !part.unary && !part.tight) {
       const chip = document.createElement('span');
       chip.className = 'chip-op';
       chip.textContent = part.text;
@@ -366,6 +419,11 @@ const KEY_MAP = {
   C: ['clearAll', {}],
   n: ['negate', {}],
   N: ['negate', {}],
+  '^': ['operator', { op: 'power' }],
+  r: ['sqrt', {}],
+  R: ['sqrt', {}],
+  p: ['constant', { constant: 'pi' }],
+  P: ['constant', { constant: 'pi' }],
 };
 
 window.addEventListener('keydown', (event) => {
@@ -391,17 +449,17 @@ window.addEventListener('keydown', (event) => {
 });
 
 /** Light up the on-screen key that matches a physical keypress. */
-function flash(action, payload) {
-  const key = action === 'digit'
-    ? keysByDigit.get(payload.digit)
-    : action === 'operator'
-      ? keysByAction.get(`op:${payload.op}`)
-      : action === 'openParen' || action === 'closeParen'
-        ? keysByAction.get('paren')
-        : action === 'backspace' || action === 'clearAll'
-          ? clearKey
-          : keysByAction.get(action);
+function keyFor(action, payload) {
+  if (action === 'digit') return keysByDigit.get(payload.digit);
+  if (action === 'operator') return keysByAction.get(`op:${payload.op}`);
+  if (action === 'constant') return keysByAction.get(`const:${payload.constant}`);
+  // Both faces of the bottom-left key answer to the one element.
+  if (action === 'backspace' || action === 'clearAll') return clearKey;
+  return keysByAction.get(action);
+}
 
+function flash(action, payload) {
+  const key = keyFor(action, payload);
   if (!key) return;
   key.classList.add('is-pressed');
   setTimeout(() => key.classList.remove('is-pressed'), 110);

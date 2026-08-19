@@ -20,6 +20,11 @@ function run(script) {
     else if (ch === '%') calc.percent();
     else if (ch === '<') calc.backspace();
     else if (ch === 'c') calc.clearAll();
+    else if (ch === '^') calc.operator('power');
+    else if (ch === 'q') calc.square();
+    else if (ch === 'r') calc.reciprocal();
+    else if (ch === 'v') calc.call('sqrt');
+    else if (ch === 'P') calc.constant('pi');
     else throw new Error(`unknown token ${ch}`);
   }
   return calc;
@@ -397,4 +402,126 @@ test('loadTokens clears an error state', () => {
   calc.loadTokens(run('1+1=').state().committedTokens);
   assert.equal(calc.state().errored, false);
   assert.equal(calc.state().expression, '1 + 1');
+});
+
+/* ------------------------------------------------------------- functions */
+
+test('powers bind tighter than multiplication', () => {
+  yields('2*3^2', 18);
+  yields('2^3*2', 16);
+});
+
+test('powers are right-associative, the way they are written on paper', () => {
+  yields('2^3^2', 512);
+});
+
+test('a leading minus applies to the power, not the base', () => {
+  yields('-2^2', -4);
+  yields('(-2)^2', 4);
+});
+
+test('an exponent can be signed', () => {
+  yields('2^-2', 0.25);
+});
+
+test('a caret sits tight against its operands', () => {
+  assert.equal(shown('2^10'), '2^10');
+  assert.equal(shown('2+3^2'), '2 + 3^2', 'while + keeps its spacing');
+});
+
+test('a power with nothing after it previews as the base alone', () => {
+  assert.equal(preview('7^'), 7);
+});
+
+test('squaring and reciprocal act on the value just entered', () => {
+  yields('5q', 25);
+  yields('5r', 0.2);
+  assert.equal(shown('5q'), '5²');
+  assert.equal(shown('5r'), '5⁻¹');
+});
+
+test('postfixes stack', () => {
+  yields('5qr', 0.04);
+});
+
+test('a postfix applies to a bracketed group, not just a number', () => {
+  yields('(2+3)q', 25);
+});
+
+test('a postfix needs something to act on', () => {
+  assert.equal(shown('q'), '', 'nothing to square');
+  assert.equal(shown('2+q'), '2 + ', 'and not an operator either');
+});
+
+test('a postfix carries on from a result', () => {
+  const calc = run('2+3=');
+  calc.square();
+  assert.equal(calc.state().preview, 25);
+});
+
+test('square root opens its bracket ready for the argument', () => {
+  assert.equal(shown('v'), '√(');
+  assert.equal(preview('v9'), 3, 'and previews before it is closed');
+  assert.equal(shown('v9p'), '√(9)');
+});
+
+test('a square root takes the value already entered', () => {
+  assert.equal(shown('9v'), '√(9)', 'the way a calculator key does');
+  assert.equal(shown('2+9v'), '2 + √(9)', 'and only that value, not the whole sum');
+  assert.equal(preview('2+9v'), 5);
+});
+
+test('a square root takes a bracketed group whole', () => {
+  assert.equal(shown('(2+7)v'), '√(2 + 7)', 'reusing the brackets it already has');
+  assert.equal(preview('(2+7)v'), 3);
+  assert.equal(shown('v9pv'), '√(√(9))', 'including one that is already a function');
+});
+
+test('a square root takes a value with its postfixes', () => {
+  assert.equal(shown('5qv'), '√(5²)');
+  assert.equal(preview('5qv'), 5);
+});
+
+test('a square root wraps a finished result rather than discarding it', () => {
+  const calc = run('20+5=');
+  calc.call('sqrt');
+  assert.equal(calc.state().expression, '√(25)');
+  assert.equal(calc.state().preview, 5);
+});
+
+test('backspace deletes a function and its bracket together', () => {
+  assert.equal(shown('v<'), '', 'one press put both there, so one press removes them');
+  assert.equal(shown('v9<'), '√(');
+});
+
+test('pi is a value like any other', () => {
+  assert.equal(shown('P'), 'π');
+  assert.equal(preview('P'), 3.14159265358979);
+  yields('2*P', 6.28318530717959);
+});
+
+test('a value straight after a value multiplies, visibly', () => {
+  assert.equal(shown('2P'), '2 × π');
+  assert.equal(shown('P2'), 'π × 2');
+  assert.equal(shown('5qP'), '5² × π');
+});
+
+test('an unfinished function is dropped rather than blocking the preview', () => {
+  assert.equal(preview('2+v'), 2);
+  assert.deepEqual(normalize([{ type: 'function', fn: 'sqrt' }, { type: 'open' }]), []);
+});
+
+test('the functions survive a round trip through the history', () => {
+  const source = run('v9p^2q=');
+  assert.equal(source.state().committed, '√(9)^2²');
+  const calc = new Calculator();
+  calc.loadTokens(source.state().committedTokens);
+  assert.equal(calc.state().preview, 81);
+});
+
+test('unknown constants and functions are ignored rather than thrown', () => {
+  const calc = new Calculator();
+  calc.constant('tau');
+  calc.call('log');
+  assert.equal(calc.state().expression, '');
 });

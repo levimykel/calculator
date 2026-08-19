@@ -17,6 +17,10 @@
   --muted: #8b97bd;
   --radius: 20px;
   --gap: 10px;
+  /* The keypad's budget, and how much of it the function row borrows when it
+     is open — so opening the row never moves the keys off the bottom. */
+  --keypad-height: min(64dvh, 500px);
+  --fx-height: clamp(42px, 7dvh, 56px);
 
   /* Safe areas, as variables so they can be tuned in one place — and
      overridden in tests to check the layout against a real device's insets.
@@ -383,6 +387,71 @@ body {
 
 .result.is-error { color: var(--accent); }
 
+/* The same height the expression line had on its own: adding the handle must
+   not cost the layout anything, on the smallest phone least of all. */
+.display__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+}
+
+/* The expression takes the room the fx handle leaves, and keeps its own
+   horizontal scroll rather than pushing the handle off the edge. */
+.display__row .entryline { flex: 1 1 auto; min-width: 0; }
+
+.fx-toggle {
+  flex: 0 0 auto;
+  -webkit-appearance: none;
+  appearance: none;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  font-style: italic;
+  line-height: 1;
+  /* Padded for the finger, then pulled back in so the extra only overhangs
+     into the display's own padding rather than growing the row. */
+  padding: 8px 12px;
+  margin: -5px 0;
+  cursor: pointer;
+  transition: background-color 140ms ease-out, color 140ms ease-out;
+  touch-action: none;
+}
+
+.fx-toggle[aria-expanded="true"] {
+  background: var(--key-fn);
+  border-color: transparent;
+  color: var(--accent);
+}
+
+.fx-toggle:active { background: var(--key-fn-press); transition-duration: 0s; }
+
+/* Portrait wants the two stacked, which is what the app's own column already
+   does — so the wrapper gets out of the way entirely. */
+.pads { display: contents; }
+
+/* The functions that do not earn a permanent key. Same flush-with-seams block
+   as the keypad, one row of it, sitting directly above. */
+.fxpad {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 1px;
+  height: var(--fx-height);
+  background: var(--hairline);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+/* `display: grid` outranks the UA rule for [hidden], so restate it. */
+.fxpad[hidden] { display: none; }
+
+.fxpad .key { font-size: clamp(1rem, 4.4vw, 1.3rem); }
+.fxpad sup { font-size: 0.6em; vertical-align: super; line-height: 0; }
+
 .entryline {
   text-align: right;
   min-height: 24px;
@@ -407,6 +476,17 @@ body {
   visibility: hidden;
 }
 
+/* The function row goes with it — expanded means "show me the history", and
+   it can have every row of space there is. */
+.app[data-history="expanded"] .fxpad { display: none; }
+
+/* Open, the function row comes out of the keypad's height rather than on top
+   of it: the block below the display is the same size either way, so the keys
+   never shift and never run off the bottom. */
+.app[data-fx="open"] .keypad {
+  height: calc(var(--keypad-height) - var(--fx-height) - var(--gap));
+}
+
 /* One flush block with hairline seams, the way the reference layout reads.
    The 1px gaps let the container colour through as the seams. */
 .keypad {
@@ -419,7 +499,7 @@ body {
   grid-template-columns: repeat(4, 1fr);
   grid-template-rows: repeat(6, 1fr);
   gap: 1px;
-  height: min(64dvh, 500px);
+  height: var(--keypad-height);
   background: var(--hairline);
   border-radius: var(--radius);
   overflow: hidden;
@@ -521,16 +601,41 @@ body {
 
   .display { padding: 4px 4px 6px; }
   .entryline { min-height: 16px; font-size: 0.8rem; }
+  .display__row { min-height: 16px; gap: 6px; }
+  .fx-toggle { font-size: 0.7rem; padding: 6px 9px; margin: -4px 0; }
+  .fxpad .key { font-size: clamp(0.85rem, 2.8vh, 1.2rem); }
 
   .result { font-size: clamp(1.5rem, 5.5vh, 2rem); }
   .result[data-len="md"] { font-size: clamp(1.25rem, 4.8vh, 1.7rem); }
   .result[data-len="sm"] { font-size: clamp(1.05rem, 4vh, 1.45rem); }
   .result[data-len="xs"] { font-size: clamp(0.9rem, 3.4vh, 1.25rem); }
 
-  .keypad {
+  /* Short and wide: height is the scarce thing and width is not, so the
+     function keys stand in a column beside the keypad instead of a row above
+     it, and cost no height at all. */
+  .pads {
+    display: flex;
+    flex-direction: row;
+    gap: var(--gap);
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .fxpad {
+    width: clamp(52px, 9vw, 78px);
+    height: auto;
+    grid-template-columns: 1fr;
+    grid-template-rows: repeat(5, minmax(0, 1fr));
+  }
+
+  .keypad,
+  .app[data-fx="open"] .keypad {
     flex: 1 1 auto;
     height: auto;
     min-height: 0;
+    /* Inside a row, an auto top margin pushes across the cross axis instead of
+       filling it — the keys need the whole height here. */
+    margin-top: 0;
     grid-template-rows: repeat(6, minmax(0, 1fr));
   }
 

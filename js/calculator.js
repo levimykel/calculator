@@ -18,9 +18,24 @@ export const OPERATORS = {
   subtract: '−',
   multiply: '×',
   divide: '÷',
+  power: '^',
 };
 
 const ADDITIVE = new Set(['add', 'subtract']);
+const MULTIPLICATIVE = new Set(['multiply', 'divide']);
+
+export const CONSTANTS = {
+  pi: { symbol: 'π', value: Math.PI },
+};
+
+export const FUNCTIONS = {
+  sqrt: { symbol: '√', apply: Math.sqrt },
+};
+
+/** Token types that stand for a value, and so can start one. */
+const VALUE_TOKENS = new Set(['number', 'constant', 'function', 'open']);
+/** Token types that complete a value, and so can be followed by a postfix. */
+const VALUE_ENDINGS = new Set(['number', 'constant', 'close', 'percent', 'square', 'reciprocal']);
 
 /** Kill binary-float artifacts (0.1 + 0.2 -> 0.30000000000000004). */
 function clean(n) {
@@ -38,9 +53,15 @@ class ParseError extends Error {}
  *
  *   expression := term (('+' | '−') term)*
  *   term       := unary (('×' | '÷' | juxtaposition) unary)*
- *   unary      := ('−' | '+') unary | postfix
- *   postfix    := primary '%'*
- *   primary    := number | '(' expression ')'
+ *   unary      := ('−' | '+') unary | power
+ *   power      := postfix ('^' unary)?
+ *   postfix    := primary ('%' | '²' | '⁻¹')*
+ *   primary    := number | constant | function '(' expression ')' | '(' expression ')'
+ *
+ * Power sits between unary and postfix, which gives it the two conventions
+ * people expect: it binds tighter than × so 2 × 3^2 is 18, and −2² is −4
+ * because the minus applies to the result. Its right operand is a `unary`, so
+ * it is right-associative (2^3^2 is 512) and 2^−1 is typeable.
  *
  * Juxtaposition is implicit multiplication: "2(3+4)" and "(1+2)(3)". The UI
  * inserts an explicit × for those, but the parser accepts them regardless so
@@ -69,10 +90,10 @@ function parseTerm(s) {
   let left = parseUnary(s);
   for (;;) {
     const next = peek(s);
-    if (next?.type === 'operator' && !ADDITIVE.has(next.op)) {
+    if (next?.type === 'operator' && MULTIPLICATIVE.has(next.op)) {
       const { op } = take(s);
       left = { type: 'binary', op, left, right: parseUnary(s) };
-    } else if (next?.type === 'open' || next?.type === 'number') {
+    } else if (next && VALUE_TOKENS.has(next.type)) {
       left = { type: 'binary', op: 'multiply', left, right: parseUnary(s) };
     } else {
       return left;
@@ -87,16 +108,32 @@ function parseUnary(s) {
     const operand = parseUnary(s);
     return next.op === 'subtract' ? { type: 'negate', operand } : operand;
   }
-  return parsePostfix(s);
+  return parsePower(s);
 }
+
+function parsePower(s) {
+  const base = parsePostfix(s);
+  const next = peek(s);
+  if (next?.type === 'operator' && next.op === 'power') {
+    take(s);
+    // The exponent is a `unary`, which is what makes this right-associative
+    // and lets a sign follow the caret.
+    return { type: 'binary', op: 'power', left: base, right: parseUnary(s) };
+  }
+  return base;
+}
+
+const POSTFIX_NODES = { percent: 'percent', square: 'square', reciprocal: 'reciprocal' };
+const POSTFIX_TYPES = new Set(Object.keys(POSTFIX_NODES));
 
 function parsePostfix(s) {
   let node = parsePrimary(s);
-  while (peek(s)?.type === 'percent') {
+  for (;;) {
+    const kind = POSTFIX_NODES[peek(s)?.type];
+    if (!kind) return node;
     take(s);
-    node = { type: 'percent', operand: node };
+    node = { type: kind, operand: node };
   }
-  return node;
 }
 
 function parsePrimary(s) {
@@ -107,6 +144,22 @@ function parsePrimary(s) {
     const value = Number(token.text);
     if (!Number.isFinite(value)) throw new ParseError('bad number');
     return { type: 'number', value };
+  }
+
+  if (token.type === 'constant') {
+    const constant = CONSTANTS[token.name];
+    if (!constant) throw new ParseError(`unknown constant ${token.name}`);
+    return { type: 'number', value: constant.value };
+  }
+
+  if (token.type === 'function') {
+    if (!FUNCTIONS[token.fn]) throw new ParseError(`unknown function ${token.fn}`);
+    // The keypad always inserts the opening paren with the function, but the
+    // parser does not insist on it.
+    if (peek(s)?.type === 'open') take(s);
+    const argument = parseExpression(s);
+    if (peek(s)?.type === 'close') take(s);
+    return { type: 'call', fn: token.fn, argument };
   }
 
   if (token.type === 'open') {
@@ -128,6 +181,14 @@ export function evaluate(node) {
       return -evaluate(node.operand);
     case 'percent':
       return evaluate(node.operand) / 100;
+    case 'square': {
+      const value = evaluate(node.operand);
+      return value * value;
+    }
+    case 'reciprocal':
+      return 1 / evaluate(node.operand);
+    case 'call':
+      return FUNCTIONS[node.fn].apply(evaluate(node.argument));
     case 'binary':
       return applyBinary(node);
     default:
@@ -149,6 +210,7 @@ function applyBinary(node) {
     case 'subtract': return left - right;
     case 'multiply': return left * right;
     case 'divide': return left / right;
+    case 'power': return left ** right;
     default: throw new ParseError(`unknown operator ${node.op}`);
   }
 }
@@ -163,7 +225,8 @@ export function normalize(tokens) {
 
   while (out.length) {
     const last = out[out.length - 1];
-    if (last.type === 'operator' || last.type === 'open') out.pop();
+    // A function with nothing after it goes too, along with its open paren.
+    if (last.type === 'operator' || last.type === 'open' || last.type === 'function') out.pop();
     else break;
   }
 
@@ -253,9 +316,9 @@ export class Calculator {
       return this;
     }
 
-    // A number straight after ")" or "%" means multiplication; make it visible
-    // rather than leaving the parser to infer it.
-    if (last?.type === 'close' || last?.type === 'percent') this.push({ type: 'operator', op: 'multiply' });
+    // A number straight after ")", "%" or "π" means multiplication; make it
+    // visible rather than leaving the parser to infer it.
+    if (endsValue(last)) this.push({ type: 'operator', op: 'multiply' });
     return this.push({ type: 'number', text: d });
   }
 
@@ -268,7 +331,7 @@ export class Calculator {
       if (!last.text.includes('.')) last.text += '.';
       return this;
     }
-    if (last?.type === 'close' || last?.type === 'percent') this.push({ type: 'operator', op: 'multiply' });
+    if (endsValue(last)) this.push({ type: 'operator', op: 'multiply' });
     return this.push({ type: 'number', text: '0.' });
   }
 
@@ -298,10 +361,7 @@ export class Calculator {
     if (this.errored) this.reset();
     this.continueFromResult(false);
 
-    const last = this.last;
-    if (last?.type === 'number' || last?.type === 'close' || last?.type === 'percent') {
-      this.push({ type: 'operator', op: 'multiply' });
-    }
+    if (endsValue(this.last)) this.push({ type: 'operator', op: 'multiply' });
     return this.push({ type: 'open' });
   }
 
@@ -323,10 +383,9 @@ export class Calculator {
    * overwhelming majority of the time.
    */
   paren() {
-    const last = this.last;
     const closeable = this.openDepth > 0
       && this.committed === null
-      && (last?.type === 'number' || last?.type === 'close' || last?.type === 'percent');
+      && endsValue(this.last);
     return closeable ? this.closeParen() : this.openParen();
   }
 
@@ -357,13 +416,88 @@ export class Calculator {
     return this;
   }
 
-  percent() {
+  /**
+   * A postfix — %, ², ⁻¹ — modifies the value just entered, so it only makes
+   * sense once there is one. They stack: 5²⁻¹ is a twenty-fifth.
+   */
+  postfix(type) {
     if (this.errored) return this;
     this.continueFromResult(true);
 
-    const last = this.last;
-    if (last?.type !== 'number' && last?.type !== 'close' && last?.type !== 'percent') return this;
-    return this.push({ type: 'percent' });
+    if (!endsValue(this.last)) return this;
+    return this.push({ type });
+  }
+
+  percent() { return this.postfix('percent'); }
+
+  square() { return this.postfix('square'); }
+
+  reciprocal() { return this.postfix('reciprocal'); }
+
+  /**
+   * A constant is a value, so landing straight after another one multiplies —
+   * the same way "2(3)" does.
+   */
+  constant(name) {
+    if (!CONSTANTS[name]) return this;
+    if (this.errored) this.reset();
+    this.continueFromResult(false);
+
+    if (endsValue(this.last)) this.push({ type: 'operator', op: 'multiply' });
+    return this.push({ type: 'constant', name });
+  }
+
+  /**
+   * A function wraps the value already entered — "9" then √ is √(9), and a
+   * finished result gets rooted rather than thrown away. With no value to take,
+   * it opens its bracket and waits for one.
+   */
+  call(fn) {
+    if (!FUNCTIONS[fn]) return this;
+    if (this.errored) this.reset();
+    this.continueFromResult(true);
+
+    const start = this.valueStart();
+    if (start !== null) {
+      if (this.tokens.length + 3 > MAX_TOKENS) return this;
+      // A group already carries its own brackets, so the function goes in
+      // front of it rather than adding a second pair.
+      if (this.tokens[start].type === 'open') {
+        this.tokens.splice(start, 0, { type: 'function', fn });
+        return this;
+      }
+      this.tokens.splice(start, 0, { type: 'function', fn }, { type: 'open' });
+      this.tokens.push({ type: 'close' });
+      return this;
+    }
+
+    this.push({ type: 'function', fn });
+    return this.push({ type: 'open' });
+  }
+
+  /**
+   * Where the value at the end of the expression starts, so a function can be
+   * wrapped around exactly that much of it. Null when the expression does not
+   * end in a value at all.
+   */
+  valueStart() {
+    let i = this.tokens.length - 1;
+    // A postfix belongs to the value it modifies: √ of "5²" is √(5²).
+    while (i >= 0 && POSTFIX_TYPES.has(this.tokens[i].type)) i -= 1;
+    if (i < 0) return null;
+
+    const type = this.tokens[i].type;
+    if (type === 'number' || type === 'constant') return i;
+    if (type !== 'close') return null;
+
+    // A bracketed group is wrapped whole, along with the function on it.
+    let depth = 0;
+    for (; i >= 0; i -= 1) {
+      if (this.tokens[i].type === 'close') depth += 1;
+      else if (this.tokens[i].type === 'open' && (depth -= 1) === 0) break;
+    }
+    if (i < 0) return null;
+    return i > 0 && this.tokens[i - 1].type === 'function' ? i - 1 : i;
   }
 
   equals() {
@@ -405,6 +539,8 @@ export class Calculator {
     }
 
     this.tokens.pop();
+    // "√(" was inserted as one press, so it deletes as one too.
+    if (last.type === 'open' && this.last?.type === 'function') this.tokens.pop();
     return this;
   }
 
@@ -426,9 +562,7 @@ export class Calculator {
 
     const last = this.last;
     if (last?.type === 'number') return this; // A number is already being typed.
-    if (last?.type === 'close' || last?.type === 'percent') {
-      this.push({ type: 'operator', op: 'multiply' });
-    }
+    if (endsValue(last)) this.push({ type: 'operator', op: 'multiply' });
     return this.push({ type: 'number', text: String(value) });
   }
 
@@ -446,6 +580,11 @@ export class Calculator {
 
 function countDigits(text) {
   return text.replace(/[^0-9]/g, '').length;
+}
+
+/** True when a token completes a value, so what follows it multiplies. */
+function endsValue(token) {
+  return Boolean(token) && VALUE_ENDINGS.has(token.type);
 }
 
 /* ------------------------------------------------------------- formatting */
@@ -468,7 +607,22 @@ export function tokenParts(tokens) {
       case 'number':
         return { kind: 'number', text: formatNumber(token.text) };
       case 'operator':
-        return { kind: 'operator', text: OPERATORS[token.op], unary: isUnaryAt(tokens, index) };
+        return {
+          kind: 'operator',
+          text: OPERATORS[token.op],
+          unary: isUnaryAt(tokens, index),
+          // A caret reads as part of the number it lifts, so it gets no room
+          // around it the way + and × do.
+          tight: token.op === 'power',
+        };
+      case 'constant':
+        return { kind: 'constant', text: CONSTANTS[token.name]?.symbol ?? '?' };
+      case 'function':
+        return { kind: 'function', text: FUNCTIONS[token.fn]?.symbol ?? '?' };
+      case 'square':
+        return { kind: 'postfix', text: '²' };
+      case 'reciprocal':
+        return { kind: 'postfix', text: '⁻¹' };
       case 'open':
         return { kind: 'paren', text: '(' };
       case 'close':
@@ -483,7 +637,7 @@ export function tokenParts(tokens) {
 
 export function formatTokens(tokens) {
   return tokenParts(tokens)
-    .map((part) => (part.kind === 'operator' && !part.unary ? ` ${part.text} ` : part.text))
+    .map((part) => (part.kind === 'operator' && !part.unary && !part.tight ? ` ${part.text} ` : part.text))
     .join('');
 }
 
