@@ -20,7 +20,7 @@ full screen and offline, like a native app.
 - An `fx` handle on the expression line opens a row of extra functions —
   `xʸ`, `x²`, `√`, `1/x` and `π` — and remembers whether you wanted it
 - A caret in the expression, so a mistake in the middle can be fixed without
-  retyping the rest. Arrow keys, Home and End move it (see the caveat below)
+  retyping the rest. Tap where you want it, or use the arrow keys, Home and End
 - One bottom-left key that deletes while there is something to delete and
   clears everything otherwise; swiping across the display also deletes
 - Full keyboard support, so it is usable with an iPad keyboard or on a desktop
@@ -195,9 +195,18 @@ stop — one arrow press steps over a whole `×`, `π` or `√(`. `locate()` tur
 stop back into a token index and an offset within it, which is what every entry
 rule reads instead of "the last token".
 
-**Only a keyboard moves it so far.** Arrow keys, Home and End work on a
-hardware keyboard and on a desktop; there is no way to place the caret by touch
-yet, so on a phone it stays at the end and the app behaves as it always did.
+**Placing it.** Tap the expression and the caret goes to the nearest gap
+between characters; the arrow keys, Home and End move it from a hardware
+keyboard. Tapping into a finished answer takes it back to being an expression,
+at the point you touched, so a wrong digit can be corrected without retyping
+the sum.
+
+For a tap to be measured, each caret stop is rendered as its own element
+tagged with where it starts, and the nearer of its two edges wins. Only the
+live expression is drawn that way — the history rows, which are not edited in
+place, stay as plain text. The line itself is padded into a finger-sized strip
+and pulled back out by the same amount, so it is 37px to hit while still taking
+the 24px of layout it always did.
 
 Two rules keep an edit from quietly changing what an expression means:
 
@@ -384,6 +393,11 @@ reference to the DOM, which is what makes it straightforward to test.
 - **`.app` already has a flex `gap`**, so a margin between two of its children
   adds to it rather than replacing it. The fx row's spacing comes from the gap
   alone, and the keypad's height subtracts that gap along with the row.
+- **A tap target can be bigger than the space it takes.** The expression line
+  and the `fx` handle are both padded out for the finger and pulled back in
+  with a negative margin of the same size, so neither costs the layout
+  anything. Check the clearance when changing those numbers: the strip reaches
+  down into the display's own padding, and must stop short of the keys.
 - **Move the caret before the edit that shortens the expression, not after.**
   It clamps to the current length when read, so a `caret -= 1` that follows a
   deletion takes two stops instead of one. Every deletion path in

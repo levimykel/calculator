@@ -397,8 +397,16 @@ body {
 }
 
 /* The expression takes the room the fx handle leaves, and keeps its own
-   horizontal scroll rather than pushing the handle off the edge. */
-.display__row .entryline { flex: 1 1 auto; min-width: 0; }
+   horizontal scroll rather than pushing the handle off the edge. The padding
+   is a finger-sized strip to tap the caret into, pulled back out again so the
+   line still occupies the height it always did. It reaches down into the
+   display's own padding, and stops short of the block below. */
+.display__row .entryline {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 5px 0 9px;
+  margin: -5px 0 -9px;
+}
 
 .fx-toggle {
   flex: 0 0 auto;

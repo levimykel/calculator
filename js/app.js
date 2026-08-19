@@ -85,7 +85,7 @@ function render() {
   const caret = showCaret(state) ? state.caret : null;
   const entry = state.errored ? '' : `${caret}\u0000${state.expression}`;
   if (entry !== lastEntry) {
-    entryLineEl.replaceChildren(state.errored ? '' : expressionNodes(state.tokens, caret));
+    entryLineEl.replaceChildren(state.errored ? '' : expressionNodes(state.tokens, caret, true));
     scrollToCaret();
     lastEntry = entry;
   }
@@ -325,13 +325,18 @@ function starNewest() {
 /**
  * Build one expression as text nodes plus operator chips, with the caret drawn
  * in at its position. A number is emitted a character at a time so the caret
- * can land between two digits; the grouping commas go in between without
- * counting as positions of their own.
+ * can land between two digits.
+ *
+ * `positions` gives every caret stop an element of its own, tagged with where
+ * it starts, so a tap can be measured against its two edges. The live
+ * expression asks for that; the history rows, which are not edited in place,
+ * do not and stay as plain text.
  */
-function expressionNodes(tokens, caret = null) {
+function expressionNodes(tokens, caret = null, positions = false) {
   const fragment = document.createDocumentFragment();
   const parts = tokenParts(tokens);
   let pos = 0;
+  let last = null;
 
   const caretHere = () => {
     if (pos !== caret) return;
@@ -340,39 +345,83 @@ function expressionNodes(tokens, caret = null) {
     fragment.append(bar);
   };
 
+  const atom = (text, className) => {
+    caretHere();
+    if (positions || className) {
+      const span = document.createElement('span');
+      if (className) span.className = className;
+      if (positions) span.dataset.pos = String(pos);
+      span.textContent = text;
+      last = span;
+    } else {
+      last = document.createTextNode(text);
+    }
+    fragment.append(last);
+    pos += 1;
+  };
+
   tokens.forEach((token, index) => {
     const part = parts[index];
 
     if (token.type === 'number' && isPlainNumber(token.text)) {
       for (const character of part.text) {
+        // A grouping comma is not a stop of its own. It rides along with the
+        // digit before it, which keeps the tappable boxes edge to edge.
         if (character === ',') {
-          fragment.append(',');
+          if (last instanceof Element) last.append(',');
+          else fragment.append(',');
           continue;
         }
-        caretHere();
-        fragment.append(character);
-        pos += 1;
+        atom(character);
       }
       return;
     }
 
-    caretHere();
     // A sign belongs to its number, and a caret to the power it makes; only
     // the operators that separate two terms get a chip of their own.
-    if (part.kind === 'operator' && !part.unary && !part.tight) {
-      const chip = document.createElement('span');
-      chip.className = 'chip-op';
-      chip.textContent = part.text;
-      fragment.append(chip);
-    } else {
-      fragment.append(document.createTextNode(part.text));
-    }
-    pos += 1;
+    const chip = part.kind === 'operator' && !part.unary && !part.tight;
+    atom(part.text, chip ? 'chip-op' : null);
   });
 
   caretHere();
   return fragment;
 }
+
+/** The caret stop nearest a point across the expression, or null if empty. */
+function caretPositionAt(clientX) {
+  let nearest = null;
+  let shortest = Infinity;
+
+  for (const atom of entryLineEl.querySelectorAll('[data-pos]')) {
+    const box = atom.getBoundingClientRect();
+    const start = Number(atom.dataset.pos);
+    // Either side of a stop is a place the caret can go.
+    for (const [edge, position] of [[box.left, start], [box.right, start + 1]]) {
+      const gap = Math.abs(edge - clientX);
+      if (gap < shortest) {
+        shortest = gap;
+        nearest = position;
+      }
+    }
+  }
+
+  return nearest;
+}
+
+/* Tapping the expression puts the caret where you tapped. On pointerdown like
+   the keys, since it is the same kind of press — and it clicks, where the
+   arrow keys stay silent: those repeat when held, a tap does not. */
+entryLineEl.addEventListener('pointerdown', (event) => {
+  if (event.button > 0) return;
+  const position = caretPositionAt(event.clientX);
+  if (position === null) return;
+
+  warmUp();
+  play('fn');
+  tap();
+  calc.caretTo(position);
+  render();
+}, { passive: true });
 
 function renderHistory() {
   const entries = history.list();
