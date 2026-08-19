@@ -245,6 +245,11 @@ reference to the DOM, which is what makes it straightforward to test.
 - **Park a short history list with `margin-top: auto`, not `justify-content`.**
   Flex end-alignment pushes overflow out of the top of a scroll container,
   where it cannot be scrolled back to.
+- **On an installed iPhone app the web view can be shorter than the screen,
+  and that part is not ours.** Measured on an iPhone 16 Pro: `viewport 812`
+  against `screen 874`, with the app filling `0→812` and zero slack under the
+  keypad. The missing 62px — exactly the top inset — falls below the web view,
+  where no page can paint. Everything below is about not *adding* to that.
 - **Two separate things push the keypad off the bottom on iOS, and both had
   to go.** The app is `position: fixed; inset: 0` rather than `height: 100dvh`,
   because an installed app can report a `dvh` shorter than the area it paints;
@@ -267,5 +272,9 @@ reference to the DOM, which is what makes it straightforward to test.
 - **`settle()` in `js/app.js`** measures any residue below the keypad after
   layout and pulls it back through `--pull`. It is a no-op when the layout
   already ends flush, which is the normal case.
+- **The viewport meta carries no scale locking.** `maximum-scale` and
+  `user-scalable=no` can affect how iOS sizes a standalone web view, so they
+  are gone; `touch-action: pan-y` on `.app` refuses pinch-zoom instead, while
+  leaving the history scrollable.
 - **Icons** are generated from `icons/calcutron.svg`. If the artwork changes,
   re-export the PNGs at 32, 180, 192, and 512 px, plus the maskable 512 variant.

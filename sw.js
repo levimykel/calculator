@@ -4,7 +4,7 @@
    test suite. It lives here rather than being imported so that this file's own
    bytes change every release — that is what browsers compare when deciding
    whether a new worker exists. */
-const VERSION = '3.2.2';
+const VERSION = '3.2.3';
 
 const CACHE = `calcutron-${VERSION}`;
 

@@ -65,6 +65,9 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--gap);
+  /* pan-y keeps the history scrollable while refusing pinch-zoom, which the
+     viewport meta no longer does. */
+  touch-action: pan-y;
   background: radial-gradient(120% 60% at 50% 0%, var(--bg-top) 0%, var(--bg) 60%);
   padding:
     calc(var(--safe-top) + 10px)
