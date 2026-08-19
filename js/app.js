@@ -52,15 +52,13 @@ function measureInset(side) {
 function layoutReport() {
   const keys = keypad.getBoundingClientRect();
   const app = document.querySelector('.app').getBoundingClientRect();
+  const screenH = window.screen ? window.screen.height : 0;
   return [
-    `viewport ${window.innerHeight}`,
-    `screen ${window.screen ? window.screen.height : '?'}`,
-    `app ${Math.round(app.top)}→${Math.round(app.bottom)}`,
-    `keypad→${Math.round(keys.bottom)}`,
-    `slack ${Math.round(window.innerHeight - keys.bottom)}`,
-    `inset t${measureInset('top')} b${measureInset('bottom')}`,
+    `viewport ${window.innerHeight}  screen ${screenH}`,
+    `app ${Math.round(app.top)}→${Math.round(app.bottom)}  keys→${Math.round(keys.bottom)}`,
+    `slack ${Math.round(window.innerHeight - keys.bottom)}  inset t${measureInset('top')} b${measureInset('bottom')}`,
     `standalone ${navigator.standalone === true} / ${window.matchMedia('(display-mode: standalone)').matches}`,
-  ].join('   ');
+  ].join('\n');
 }
 const soundToggle = document.getElementById('soundToggle');
 const versionChip = document.getElementById('versionChip');
@@ -479,6 +477,8 @@ topbarEl.addEventListener('pointerdown', (event) => {
   holdTimer = setTimeout(() => {
     heldOpen = true;
     diagEl.hidden = !diagEl.hidden;
+    // Tints the page canvas, which shows only outside the app box.
+    document.documentElement.dataset.diag = String(!diagEl.hidden);
     if (!diagEl.hidden) diagEl.textContent = layoutReport();
     tap();
   }, 500);
