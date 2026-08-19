@@ -18,12 +18,6 @@ const history = new History();
 const keypad = document.getElementById('keypad');
 const diagEl = document.getElementById('diag');
 
-/* iOS reports a home-screen app through navigator.standalone; the CSS uses
-   this to stop reserving the home-indicator strip a second time. */
-if (navigator.standalone === true) {
-  document.documentElement.dataset.standalone = 'true';
-}
-
 /**
  * Take back any space left under the keypad. The layout should already end
  * flush with the viewport, but iOS has been known to lay a standalone app out
@@ -477,8 +471,6 @@ topbarEl.addEventListener('pointerdown', (event) => {
   holdTimer = setTimeout(() => {
     heldOpen = true;
     diagEl.hidden = !diagEl.hidden;
-    // Tints the page canvas, which shows only outside the app box.
-    document.documentElement.dataset.diag = String(!diagEl.hidden);
     if (!diagEl.hidden) diagEl.textContent = layoutReport();
     tap();
   }, 500);

@@ -20,14 +20,14 @@
 
   /* Safe areas, as variables so they can be tuned in one place — and
      overridden in tests to check the layout against a real device's insets.
-     The bottom one is capped: iOS reserves the home-indicator strip itself in
-     an installed app, so honouring the full inset on top of that leaves a
-     visible band of dead space under the keypad. 14px keeps the bottom row
-     clear of the indicator without wasting the rest. */
+     The bottom one is capped at 20px: the full inset (34px on a recent iPhone)
+     leaves more room than the keypad needs, and none at all puts the keys hard
+     against the screen edge. This is the number to change if the keypad wants
+     to sit higher or lower. */
   --safe-top: env(safe-area-inset-top);
   --safe-right: env(safe-area-inset-right);
   --safe-left: env(safe-area-inset-left);
-  --safe-bottom: min(env(safe-area-inset-bottom), 14px);
+  --safe-bottom: min(env(safe-area-inset-bottom), 20px);
 }
 
 * { box-sizing: border-box; }
@@ -75,18 +75,6 @@ body {
     var(--safe-bottom)
     calc(var(--safe-left) + 14px);
 }
-
-/* Installed on the home screen, iOS already holds the home-indicator strip
-   back, so any inset we add on top of it is pure dead space under the keypad.
-   In a browser tab the inset is real and worth honouring. */
-@media (display-mode: standalone) {
-  :root { --safe-bottom: 0px; }
-}
-
-/* Belt and braces: iOS exposes navigator.standalone for home-screen apps, and
-   it is not always in step with the display-mode query above. js/app.js sets
-   this attribute from it. */
-:root[data-standalone="true"] { --safe-bottom: 0px; }
 
 .topbar {
   display: flex;
@@ -508,9 +496,3 @@ body {
   text-align: left;
   white-space: pre-line;
 }
-
-/* While diagnostics are on, the page canvas turns magenta. `.app` covers the
-   whole viewport, so magenta can only show in area the browser paints
-   *outside* it — which is precisely the open question: is the band under the
-   keypad inside the app, or is it the strip iOS holds back below the web view? */
-:root[data-diag="true"] body { background: #ff2d9b; }

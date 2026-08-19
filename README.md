@@ -254,26 +254,24 @@ reference to the DOM, which is what makes it straightforward to test.
   magenta canvas tint is what proved it: it appeared *below* a keypad the
   numbers said was already flush. `black` instead starts the view below the
   status bar, so its height reaches the screen bottom. **iOS reads this meta at
-  install time — changing it needs a delete-and-re-add.**
-- **Two separate things push the keypad off the bottom on iOS, and both had
-  to go.** The app is `position: fixed; inset: 0` rather than `height: 100dvh`,
-  because an installed app can report a `dvh` shorter than the area it paints;
-  and `--safe-bottom` drops to `0` under `@media (display-mode: standalone)`,
-  because iOS already reserves the home-indicator strip there, so honouring the
-  inset again is pure dead space. In a browser tab the inset is real and is
-  honoured, capped at 14px. `.keypad` also carries `margin-top: auto` so no
-  arrangement of the bands above it can leave slack underneath.
+  install time — changing it needs a delete-and-re-add.** With the view finally
+  ending where the screen does, the home-indicator inset means something again,
+  and `--safe-bottom` honours it (capped at 20px) to leave the keypad sitting
+  just clear of the indicator.
+- **The app is `position: fixed; inset: 0`** rather than `height: 100dvh`,
+  since an installed app can report a `dvh` shorter than the area it paints.
+  `.keypad` carries `margin-top: auto` so no arrangement of the bands above it
+  can leave slack underneath.
 - **Safe areas are CSS variables** so the fit tests can substitute real device
   values and check the layout against them — Playwright reports every inset as
   zero, which is why a whole class of iOS spacing bugs was invisible to them.
 - **Long-press the header** for the layout numbers: viewport and screen
   height, where the app box and keypad end, any slack under the keypad, the
   measured safe-area insets, and whether iOS considers this a standalone app.
-  It also tints the page canvas magenta. `.app` covers the whole viewport, so
-  magenta can only appear in area the browser paints *outside* it — which turns
-  "is that band under the keypad mine or the OS's?" into something a screenshot
-  answers. These values cannot be inspected on a phone, and the differences
-  between them are what iOS spacing bugs look like.
+  These values cannot be inspected on a phone, and the differences between them
+  are what iOS spacing bugs look like — comparing `viewport` against `screen` is
+  what finally identified the status bar style as the cause of the band under
+  the keypad.
 - **`settle()` in `js/app.js`** measures any residue below the keypad after
   layout and pulls it back through `--pull`. It is a no-op when the layout
   already ends flush, which is the normal case.
