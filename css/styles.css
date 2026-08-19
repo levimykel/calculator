@@ -671,18 +671,3 @@ body {
   .key--fn { font-size: clamp(0.85rem, 2.8vh, 1.2rem); }
   .key--op { font-size: clamp(1.05rem, 3.6vh, 1.6rem); }
 }
-
-/* ------------------------------------------------------- diagnostics */
-
-/* Long-press the header to show this. Only ever here to answer "where is that
-   gap coming from" on a device that cannot be inspected. Sized to be legible
-   in a screenshot rather than compact. */
-.diag {
-  flex: 0 0 auto;
-  margin: 0;
-  padding: 6px 4px;
-  font: 600 0.8rem/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
-  color: var(--text);
-  text-align: left;
-  white-space: pre-line;
-}

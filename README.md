@@ -366,13 +366,13 @@ reference to the DOM, which is what makes it straightforward to test.
   The substitution happens in an init script, *before* any page script runs, so
   the app boots into the layout a real device gives it. Applying it after load
   once hid a bug where load-time code ate the bottom margin.
-- **Long-press the header** for the layout numbers: viewport and screen
-  height, where the app box and keypad end, any slack under the keypad, the
-  measured safe-area insets, and whether iOS considers this a standalone app.
-  These values cannot be inspected on a phone, and the differences between them
-  are what iOS spacing bugs look like — comparing `viewport` against `screen` is
-  what finally identified the status bar style as the cause of the band under
-  the keypad.
+- **To diagnose iOS spacing again, build a throwaway readout, not a feature.**
+  The one that found the status bar bug printed `window.innerHeight` against
+  `screen.height`, where the app box and keypad ended, and the measured insets
+  — numbers that cannot be inspected on a phone, and whose differences are what
+  these bugs look like. It lived behind a long-press on the header and has been
+  taken out again: it had done its job, and a hidden gesture that reveals debug
+  text is not something a calculator should carry.
 - **The viewport meta carries no scale locking.** `maximum-scale` and
   `user-scalable=no` can affect how iOS sizes a standalone web view, so they
   are gone; `touch-action: pan-y` on `.app` refuses pinch-zoom instead, while

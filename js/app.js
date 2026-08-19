@@ -20,29 +20,6 @@ const history = new History();
 const keypad = document.getElementById('keypad');
 const fxPad = document.getElementById('fxPad');
 const fxToggle = document.getElementById('fxToggle');
-const diagEl = document.getElementById('diag');
-
-/** Measure a safe-area inset by asking the browser to size an element by it. */
-function measureInset(side) {
-  const probe = document.createElement('div');
-  probe.style.cssText = `position:fixed;left:0;bottom:0;width:0;visibility:hidden;pointer-events:none;height:env(safe-area-inset-${side})`;
-  document.body.append(probe);
-  const value = Math.round(probe.getBoundingClientRect().height);
-  probe.remove();
-  return value;
-}
-
-function layoutReport() {
-  const keys = keypad.getBoundingClientRect();
-  const app = document.querySelector('.app').getBoundingClientRect();
-  const screenH = window.screen ? window.screen.height : 0;
-  return [
-    `viewport ${window.innerHeight}  screen ${screenH}`,
-    `app ${Math.round(app.top)}→${Math.round(app.bottom)}  keys→${Math.round(keys.bottom)}`,
-    `slack ${Math.round(window.innerHeight - keys.bottom)}  inset t${measureInset('top')} b${measureInset('bottom')}`,
-    `standalone ${navigator.standalone === true} / ${window.matchMedia('(display-mode: standalone)').matches}`,
-  ].join('\n');
-}
 const soundToggle = document.getElementById('soundToggle');
 const versionChip = document.getElementById('versionChip');
 
@@ -654,33 +631,7 @@ function setChip(state) {
 
 const updates = initUpdates(setChip);
 
-/* Long-press anywhere in the header for the layout numbers. The whole bar is
-   the target rather than just the chip, since a small chip is easy to miss. */
-let holdTimer = null;
-let heldOpen = false;
-const topbarEl = document.querySelector('.topbar');
-
-topbarEl.addEventListener('pointerdown', (event) => {
-  if (event.target.closest('#soundToggle')) return;
-  heldOpen = false;
-  clearTimeout(holdTimer);
-  holdTimer = setTimeout(() => {
-    heldOpen = true;
-    diagEl.hidden = !diagEl.hidden;
-    if (!diagEl.hidden) diagEl.textContent = layoutReport();
-    tap();
-  }, 500);
-});
-
-/* Only a lifted finger or an abandoned gesture ends the press. Watching
-   pointerleave as well would cancel on the slightest drift off the target,
-   which on a touch screen is most presses. */
-for (const event of ['pointerup', 'pointercancel']) {
-  window.addEventListener(event, () => clearTimeout(holdTimer));
-}
-
 versionChip.addEventListener('click', () => {
-  if (heldOpen) { heldOpen = false; return; } // that press was the long-press
   tap();
   if (chipState === STATUS.READY) {
     versionChip.textContent = 'Updating…';
