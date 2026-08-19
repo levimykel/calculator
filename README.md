@@ -245,11 +245,16 @@ reference to the DOM, which is what makes it straightforward to test.
 - **Park a short history list with `margin-top: auto`, not `justify-content`.**
   Flex end-alignment pushes overflow out of the top of a scroll container,
   where it cannot be scrolled back to.
-- **On an installed iPhone app the web view can be shorter than the screen,
-  and that part is not ours.** Measured on an iPhone 16 Pro: `viewport 812`
-  against `screen 874`, with the app filling `0→812` and zero slack under the
-  keypad. The missing 62px — exactly the top inset — falls below the web view,
-  where no page can paint. Everything below is about not *adding* to that.
+- **The status bar style decides where the bottom of the app lands, and
+  `black-translucent` gets it wrong.** Measured on an iPhone 16 Pro with that
+  style: `viewport 812` against `screen 874`, app filling `0→812`, zero slack
+  under the keypad, `inset t62`. iOS positions the web view at the top of the
+  screen but sizes it as though it started below the status bar, so the missing
+  62px falls off the bottom, outside the page, where nothing can paint. The
+  magenta canvas tint is what proved it: it appeared *below* a keypad the
+  numbers said was already flush. `black` instead starts the view below the
+  status bar, so its height reaches the screen bottom. **iOS reads this meta at
+  install time — changing it needs a delete-and-re-add.**
 - **Two separate things push the keypad off the bottom on iOS, and both had
   to go.** The app is `position: fixed; inset: 0` rather than `height: 100dvh`,
   because an installed app can report a `dvh` shorter than the area it paints;
