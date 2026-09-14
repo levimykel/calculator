@@ -2,6 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Exchange, SOURCES } from '../js/exchange.js';
 
+/*
+ * Nothing in here may touch the network. A real request would tie the suite to
+ * a third-party service being up — and, worse, let a test pass for the wrong
+ * reason: `{ fetcher: undefined }` does not override a default parameter, so
+ * one of these once reached the live rates service and was marked green for it.
+ */
+globalThis.fetch = () => { throw new Error('a test reached the network'); };
+
 /** localStorage, as much of it as this needs. */
 function fakeStorage(seed = {}) {
   const items = new Map(Object.entries(seed));
@@ -138,8 +146,14 @@ test('no storage at all still converts, it just forgets', async () => {
   assert.equal(exchange.read(), null);
 });
 
-test('no fetch at all fails quietly rather than throwing', async () => {
-  const exchange = new Exchange({ storage: fakeStorage(), fetcher: undefined });
+test('a browser with no fetch at all fails quietly rather than throwing', async () => {
+  const exchange = new Exchange({ storage: fakeStorage(), fetcher: null });
+  assert.equal(await exchange.refresh(), null);
+});
+
+test('a fetch that throws outright is just another source that did not answer', async () => {
+  // The global stub above is what would be reached if a fetcher were omitted.
+  const exchange = new Exchange({ storage: fakeStorage() });
   assert.equal(await exchange.refresh(), null);
 });
 

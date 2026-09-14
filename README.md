@@ -502,13 +502,19 @@ reference to the DOM, which is what makes it straightforward to test.
 - **`.app` already has a flex `gap`**, so a margin between two of its children
   adds to it rather than replacing it. The fx row's spacing comes from the gap
   alone, and the keypad's height subtracts that gap along with the row.
-- **The rate services were never reached from the machine this was built on.**
-  Outbound access to them was blocked, so both response shapes are coded from
-  their documentation rather than verified against the live services, and the
-  browser tests run against stubbed responses. The parsers are strict for
-  exactly that reason: if a shape is wrong the screen says it has no rates,
-  rather than inventing some. If it ever does say that with a working
+- **The rate services cannot be reached from the machine this was built on.**
+  Outbound access to them is blocked there, so the response shapes were coded
+  from documentation and the browser tests run against stubbed responses. The
+  parsers are strict for exactly that reason: a shape that is wrong shows "no
+  rates" rather than inventing some. The ECB source was proved against the live
+  service by accident — a test that should have been hermetic reached it from
+  CI and failed by printing the real rates it had parsed. The fallback remains
+  unproven in the wild; if the screen ever says it has no rates on a working
   connection, the two `SOURCES` in `js/exchange.js` are the thing to check.
+- **Keep the exchange tests off the network.** `{ fetcher: undefined }` does
+  not override a default parameter — that is how the accident above happened,
+  and how a test came to pass for the wrong reason. The suite now replaces
+  `globalThis.fetch` with something that throws.
 - **An SVG element has no `hidden` property.** `el.hidden = false` on a `<g>`
   sets a JavaScript property and leaves the attribute — and the stylesheet —
   exactly where they were. Use `toggleAttribute`.
