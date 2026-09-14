@@ -3,6 +3,11 @@ import {
   FIELDS, DEFAULTS, project, formatMoney, formatField, valueOfField, accepts,
 } from './growth.js';
 import { points, band, edge, yearAt, ticks } from './chart.js';
+import {
+  DEFAULT_BASE, convert, order, formatAmount, formatEntry, formatRate, formatDay,
+  currencyName,
+} from './rates.js';
+import { Exchange } from './exchange.js';
 import { History } from './history.js';
 import { play, warmUp, soundLevel, cycleSoundLevel } from './feedback.js';
 import { tap } from './haptics.js';
@@ -24,8 +29,11 @@ const history = new History();
 const keypad = document.getElementById('keypad');
 const fxPad = document.getElementById('fxPad');
 const fxToggle = document.getElementById('fxToggle');
-const growthPad = document.getElementById('growthPad');
-const modeToggle = document.getElementById('modeToggle');
+const numPad = document.getElementById('numPad');
+const padAction = document.getElementById('padAction');
+const modesEl = document.getElementById('modes');
+const ratesListEl = document.getElementById('ratesList');
+const ratesSourceEl = document.getElementById('ratesSource');
 const growthFieldsEl = document.getElementById('growthFields');
 const growthBalanceEl = document.getElementById('growthBalance');
 const growthWhenEl = document.getElementById('growthWhen');
@@ -63,7 +71,7 @@ function indexKeys(selector, digits, actions) {
 // Two indexes rather than one: both pads carry a "7", and a physical key
 // should light the one that is on screen.
 indexKeys('.keypad .key, .fxpad .key', keysByDigit, keysByAction);
-indexKeys('.growthpad .key', growthByDigit, growthByAction);
+indexKeys('.numpad .key', growthByDigit, growthByAction);
 
 let lastResult = null;
 let lastEntry = null;
@@ -149,9 +157,9 @@ function lengthBucket(length) {
 
 const SILENT = new Set(['caretLeft', 'caretRight', 'caretHome', 'caretEnd']);
 
-/** What the growth screen answers to, and what only it answers to. */
-const FIELD_ACTIONS = new Set(['nextField', 'previousField']);
-const GROWTH_ACTIONS = new Set([
+/** What the two typing screens answer to, and what only they answer to. */
+const FIELD_ACTIONS = new Set(['nextField', 'previousField', 'refreshRates']);
+const PAD_ACTIONS = new Set([
   'digit', 'decimal', 'backspace', 'clearOrBack', 'clearAll', 'equals', ...FIELD_ACTIONS,
 ]);
 
@@ -166,6 +174,7 @@ function voiceFor(action) {
 
 function perform(action, dataset = {}) {
   if (mode === 'growth') return performGrowth(action, dataset);
+  if (mode === 'rates') return performRates(action, dataset);
 
   switch (action) {
     case 'digit': calc.digit(dataset.digit); break;
@@ -273,7 +282,7 @@ function onPadClick(event) {
 
 bindKeys(keypad);
 bindKeys(fxPad);
-bindKeys(growthPad);
+bindKeys(numPad);
 
 /* ------------------------------------------------------------- functions */
 
@@ -581,7 +590,7 @@ window.addEventListener('keydown', (event) => {
 
   // Each screen answers to its own keys. Letting the others through would
   // click and flash for a press that could not do anything.
-  if (mode === 'growth' ? !GROWTH_ACTIONS.has(action) : FIELD_ACTIONS.has(action)) return;
+  if (mode === 'calc' ? FIELD_ACTIONS.has(action) : !PAD_ACTIONS.has(action)) return;
 
   event.preventDefault();
   warmUp();
@@ -591,7 +600,7 @@ window.addEventListener('keydown', (event) => {
 
 /** Light up the on-screen key that matches a physical keypress. */
 function keyFor(action, payload) {
-  if (mode === 'growth') {
+  if (mode !== 'calc') {
     return action === 'digit'
       ? growthByDigit.get(payload.digit)
       : growthByAction.get(action);
@@ -901,6 +910,195 @@ for (const name of ['pointerup', 'pointercancel', 'pointerleave']) {
 // The plot is measured, not scaled, so it has to be redrawn at a new size.
 new ResizeObserver(() => { if (mode === 'growth' && projection) drawChart(); }).observe(chartEl);
 
+/* ----------------------------------------------------------------- rates */
+
+/* The one thing in the app that needs the network. The rule is: show what was
+   last fetched straight away, say when it is from, and go and look for
+   something newer — never make anyone wait, and never let a stale number pass
+   itself off as today's. */
+const exchange = new Exchange();
+const RATES_KEY = 'calcutron.currency';
+
+let snapshot = null;
+let rateBase = DEFAULT_BASE;
+let amount = '100';
+let checking = false;
+const rateRows = new Map();
+
+function loadRates() {
+  snapshot = exchange.read();
+  try {
+    const saved = JSON.parse(readStored(RATES_KEY, 'null'));
+    if (saved && typeof saved.base === 'string') rateBase = saved.base;
+    if (saved && typeof saved.amount === 'string') amount = saved.amount;
+  } catch {
+    // Whatever was there is not worth a broken screen.
+  }
+}
+
+function renderRates() {
+  const codes = snapshot ? order(rateBase, snapshot.rates) : [rateBase];
+  const value = Number(amount === '' ? '0' : amount) || 0;
+
+  // Rows are kept and rewritten rather than rebuilt: a list this long, redrawn
+  // on every keypress, is the one place here that could feel slow.
+  if (rowKey(codes) !== ratesListEl.dataset.codes) {
+    buildRateRows(codes);
+    ratesListEl.dataset.codes = rowKey(codes);
+  }
+
+  for (const code of codes) {
+    const row = rateRows.get(code);
+    if (!row) continue;
+    const isBase = code === rateBase;
+    const converted = isBase ? null : convert(value, rateBase, code, snapshot ?? {});
+    row.value.textContent = isBase
+      ? formatEntry(amount, code)
+      : converted === null ? '—' : formatAmount(converted, code);
+    row.button.classList.toggle('rate--base', isBase);
+    row.button.setAttribute('aria-current', String(isBase));
+    row.button.setAttribute('aria-label', isBase
+      ? `${currencyName(code)}, the amount you are converting: ${row.value.textContent}`
+      : `${currencyName(code)}: ${row.value.textContent}. ${formatRate(rateBase, code, snapshot)}`);
+  }
+
+  renderRatesSource();
+  store(RATES_KEY, JSON.stringify({ base: rateBase, amount }));
+}
+
+function rowKey(codes) {
+  return codes.join(',');
+}
+
+function buildRateRows(codes) {
+  rateRows.clear();
+  ratesListEl.replaceChildren();
+
+  for (const code of codes) {
+    const button = document.createElement('button');
+    button.className = 'rate';
+    button.type = 'button';
+    button.dataset.code = code;
+
+    const label = document.createElement('span');
+    label.className = 'rate__code';
+    label.textContent = code;
+
+    const name = document.createElement('span');
+    name.className = 'rate__name';
+    name.textContent = currencyName(code);
+
+    const value = document.createElement('span');
+    value.className = 'rate__value';
+
+    button.append(label, name, value);
+    ratesListEl.append(button);
+    rateRows.set(code, { button, value });
+  }
+}
+
+/** Where the numbers came from and when — never "today" unless it is. */
+function renderRatesSource() {
+  if (!snapshot) {
+    ratesSourceEl.dataset.state = checking ? 'checking' : 'none';
+    ratesSourceEl.textContent = checking
+      ? 'Looking up today\u2019s rates…'
+      : 'No rates yet — connect once and they are kept for offline.';
+    return;
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const stale = snapshot.date !== today;
+  ratesSourceEl.dataset.state = checking ? 'checking' : stale ? 'stale' : 'fresh';
+  ratesSourceEl.textContent = checking
+    ? `${snapshot.source} · ${formatDay(snapshot.date)} · checking…`
+    : `${snapshot.source} · ${formatDay(snapshot.date)}`;
+}
+
+/**
+ * Rates are published once a working day, so this is cheap to ask for and
+ * pointless to ask for often. Fresh ones are left alone.
+ */
+async function refreshRates({ force = false } = {}) {
+  if (checking) return;
+  if (!force && exchange.isFresh()) return;
+
+  checking = true;
+  renderRatesSource();
+  const fetched = await exchange.refresh();
+  checking = false;
+
+  if (fetched) {
+    snapshot = fetched;
+    // A base that the new set does not quote would leave every row empty.
+    if (rateBase !== snapshot.base && !(rateBase in snapshot.rates)) rateBase = snapshot.base;
+    renderRates();
+    return;
+  }
+  renderRatesSource();
+}
+
+function performRates(action, dataset) {
+  switch (action) {
+    // A lone zero is an amount waiting to be replaced.
+    case 'digit':
+      editAmount((raw) => (raw === '0' ? dataset.digit : raw + dataset.digit));
+      break;
+    case 'decimal':
+      editAmount((raw) => (raw.includes('.') ? raw : `${raw || '0'}.`));
+      break;
+    case 'backspace':
+    case 'clearOrBack':
+      editAmount((raw) => raw.slice(0, -1));
+      break;
+    case 'clearAll':
+      editAmount(() => '');
+      break;
+    case 'refreshRates':
+    case 'equals':
+      play('fn');
+      refreshRates({ force: true });
+      break;
+    default:
+      // The calculator's own keys mean nothing here.
+  }
+}
+
+/** Amounts are capped where the display stops being able to say them. */
+function editAmount(rewrite) {
+  const raw = rewrite(amount);
+  if (/^\d*\.?\d{0,2}$/.test(raw) && (raw === '' || Number(raw) <= 1e12)) amount = raw;
+  renderRates();
+}
+
+ratesListEl.addEventListener('pointerdown', (event) => {
+  if (event.button > 0) return;
+  const button = event.target.closest('.rate');
+  if (!button) return;
+
+  button.classList.add('is-pressed');
+  pressedKeys.set(event.pointerId, button);
+  warmUp();
+  play('fn');
+  tap();
+
+  const code = button.dataset.code;
+  if (code !== rateBase && snapshot) {
+    // Carry the same money across rather than the same number: the figure
+    // under the finger is the one that stays put.
+    const carried = convert(Number(amount || '0') || 0, rateBase, code, snapshot);
+    if (carried !== null) amount = trimAmount(carried);
+    rateBase = code;
+  }
+  renderRates();
+}, { passive: true });
+
+/** What a converted amount looks like once it is something to type on. */
+function trimAmount(value) {
+  const fixed = Math.min(value, 1e12).toFixed(2);
+  return fixed.endsWith('.00') ? fixed.slice(0, -3) : fixed;
+}
+
 function focusField(key) {
   activeField = key;
   renderGrowth();
@@ -961,32 +1159,58 @@ growthFieldsEl.addEventListener('pointerdown', (event) => {
   focusField(button.dataset.field);
 }, { passive: true });
 
+const MODES = ['calc', 'growth', 'rates'];
+
+/* The shared pad's action key belongs to whichever screen is using it. */
+const PAD_ACTION = {
+  growth: { action: 'nextField', label: 'Next', description: 'Next field' },
+  rates: { action: 'refreshRates', label: '\u21bb', description: 'Fetch today\u2019s rates' },
+};
+
 function setMode(next) {
-  mode = next;
-  appEl.dataset.mode = next;
-  modeToggle.textContent = next === 'growth' ? 'Calc' : 'Growth';
-  modeToggle.setAttribute(
-    'aria-label',
-    next === 'growth' ? 'Switch to the calculator' : 'Switch to the growth calculator',
-  );
-  store(MODE_KEY, next);
-  if (next === 'growth') renderGrowth();
+  mode = MODES.includes(next) ? next : 'calc';
+  appEl.dataset.mode = mode;
+
+  for (const button of modesEl.querySelectorAll('.modes__item')) {
+    button.setAttribute('aria-pressed', String(button.dataset.mode === mode));
+  }
+
+  const pad = PAD_ACTION[mode];
+  if (pad) {
+    padAction.dataset.action = pad.action;
+    padAction.textContent = pad.label;
+    padAction.setAttribute('aria-label', pad.description);
+    // The index is looked up once, so it has to be told when a key changes job.
+    growthByAction.set(pad.action, padAction);
+  }
+
+  store(MODE_KEY, mode);
+  if (mode === 'growth') renderGrowth();
+  else if (mode === 'rates') { renderRates(); refreshRates(); }
   else render();
 }
 
-modeToggle.addEventListener('click', () => {
+modesEl.addEventListener('click', (event) => {
+  const button = event.target.closest('.modes__item');
+  if (!button || button.dataset.mode === mode) return;
   play('fn');
   tap();
   setHistoryExpanded(false);
-  setMode(mode === 'growth' ? 'calc' : 'growth');
+  setMode(button.dataset.mode);
+});
+
+/* Rates go off overnight, so coming back to the app is a reason to look. */
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && mode === 'rates') refreshRates();
 });
 
 loadGrowth();
 buildFields();
 renderGrowth();
+loadRates();
 
 renderSoundToggle();
 setChip(STATUS.IDLE);
 renderHistory();
 render();
-setMode(readStored(MODE_KEY, 'calc') === 'growth' ? 'growth' : 'calc');
+setMode(readStored(MODE_KEY, 'calc'));

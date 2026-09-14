@@ -34,10 +34,14 @@
 <div class="app" data-mode="calc">
   <header class="topbar">
     <img class="mark" src="icons/calcutron.svg" alt="" width="30" height="30">
-    <h1>Calcutron</h1>
-    <!-- Labelled with where it takes you, which is the only thing there is
-         room to say and the only thing worth saying. -->
-    <button class="chip chip--mode" id="modeToggle" type="button" aria-label="Switch to the growth calculator">Growth</button>
+    <!-- The wordmark gives up its room to the screen picker; the robot still
+         says whose app this is. Kept for anything reading rather than looking. -->
+    <h1 class="sr-only">Calcutron</h1>
+    <div class="modes" id="modes">
+      <button class="modes__item" type="button" data-mode="calc" aria-pressed="true">Calc</button>
+      <button class="modes__item" type="button" data-mode="growth" aria-pressed="false">Growth</button>
+      <button class="modes__item" type="button" data-mode="rates" aria-pressed="false">Rates</button>
+    </div>
     <button class="chip chip--icon" id="soundToggle" type="button" data-level="soft" aria-label="Key sounds: soft. Tap for louder.">
       <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
         <path class="icon__speaker" d="M4 9.5h3.2L12 5.5v13L7.2 14.5H4z"/>
@@ -46,7 +50,7 @@
         <path class="icon__cross" d="M15.8 9.8l4.4 4.4M20.2 9.8l-4.4 4.4"/>
       </svg>
     </button>
-    <button class="chip" id="versionChip" type="button" aria-live="polite">v4.1.0</button>
+    <button class="chip" id="versionChip" type="button" aria-live="polite">v4.2.0</button>
   </header>
 
   <section class="history" aria-label="History">
@@ -75,7 +79,10 @@
   <!-- Compound growth. Same shape as the calculator: the answer up top, the
        things you touch down by the thumb — and, like the keypad, the same two
        blocks stand side by side when the window is short and wide. -->
-  <div class="growthwrap">
+  <!-- Growth and currency are the same shape — a readout, the things you
+       touch, and one shared number pad — so they share a wrapper, which stands
+       the pad beside them when the window is short and wide. -->
+  <div class="panes">
   <section class="growth" id="growth" aria-label="Compound growth">
     <div class="growth__answer">
       <output class="growth__balance" id="growthBalance" aria-live="polite">$0</output>
@@ -102,7 +109,14 @@
     <div class="growth__fields" id="growthFields"></div>
   </section>
 
-  <div class="growthpad" id="growthPad">
+  <!-- Currency. The list is the picker: type an amount against the currency at
+       the top, read the rest, tap one to carry the same money into it. -->
+  <section class="rates" id="rates" aria-label="Currency">
+    <div class="rates__list" id="ratesList"></div>
+    <p class="rates__source" id="ratesSource"></p>
+  </section>
+
+  <div class="numpad" id="numPad">
     <button class="key" data-action="digit" data-digit="7">7</button>
     <button class="key" data-action="digit" data-digit="8">8</button>
     <button class="key" data-action="digit" data-digit="9">9</button>
@@ -121,14 +135,14 @@
     <button class="key" data-action="digit" data-digit="1">1</button>
     <button class="key" data-action="digit" data-digit="2">2</button>
     <button class="key" data-action="digit" data-digit="3">3</button>
-    <button class="key key--eq key--tall" data-action="nextField" aria-label="Next field">Next</button>
+    <button class="key key--eq key--tall" id="padAction" data-action="nextField" aria-label="Next field">Next</button>
 
     <button class="key key--wide" data-action="digit" data-digit="0">0</button>
     <button class="key" data-action="decimal" aria-label="Decimal point">.</button>
   </div>
   </div>
 
-  <!-- Wrapper so landscape can stand the two side by side. It is
+  <!-- The same wrapper trick for the calculator's own two blocks. It is
        `display: contents` in portrait, where the stack is what is wanted. -->
   <div class="pads">
   <div class="fxpad" id="fxPad" hidden>
@@ -181,6 +195,7 @@
     <button class="key key--eq key--wide" data-action="equals" aria-label="Equals">=</button>
   </div>
   </div>
+</div>
 
 <script type="module" src="js/app.js"></script>
 </body>

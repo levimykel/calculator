@@ -31,6 +31,8 @@ full screen and offline, like a native app.
 - A second screen for compound growth: a starting amount, a monthly
   contribution, a rate and a horizon, projected to a balance as you type, with
   a chart you can drag along to read any year
+- A currency screen: type an amount and read it in every currency at once, at
+  the day's rates, kept for when there is no signal
 - Works with no network once installed
 - Shows its version, and updates on your say-so rather than mid-calculation
 
@@ -95,6 +97,48 @@ past which a projection stops being a projection.
 **What it is not.** There is no inflation adjustment, no tax, no varying
 contributions, and the currency is a plain `$` — `CURRENCY` in `js/growth.js`
 is the one place that is decided.
+
+## Currency
+
+Type an amount against the currency at the top and every other row answers it.
+Tap a row and it becomes the one you are converting from, carrying the same
+money across rather than the same number — the figure under your finger stays
+put. The list is the picker: no dropdown, no search, the currencies people
+reach for at the top and the rest below.
+
+### Where the rates come from
+
+Two services, tried in order, both public, keyless and CORS-enabled — this app
+is a static site with no server to hide an API key in, so anything needing one
+is no use to it.
+
+1. **Frankfurter** (`api.frankfurter.dev`) — the European Central Bank's daily
+   reference rates. Published each working day; at a weekend the newest set is
+   Friday's, and the screen says so.
+2. **open.er-api.com** — wider coverage, used when the first cannot be reached.
+
+`js/rates.js` reads either shape and believes neither on sight: the base must
+be a currency code, the date an ISO day, and every rate a finite number above
+zero. Anything else is dropped, and a payload with nothing left is refused
+outright. A captive portal's login page and an "upgrade to a paid plan"
+message both arrive looking like JSON, and a rates screen confidently showing
+the wrong number is worse than one admitting it could not find out.
+
+### Offline, and the date
+
+Rates are the one thing in the app that needs the network, so the rule is:
+**show what was last fetched immediately, say what day it is from, and go and
+look for something newer.** Nothing blocks on a request.
+
+The footer names the source and the day. When that day is not today it turns
+amber, because "the current rate" and "Friday's rate" are different claims and
+the app should not blur them. With no rates ever fetched it says so and points
+at the fix. A set less than half an hour old is not fetched again; returning to
+the app checks, since rates go off overnight.
+
+`js/exchange.js` takes its storage, its `fetch` and its clock as arguments,
+which is what lets the whole of that — the fallback, the caching, the
+freshness, the refusal of nonsense — be tested without a network.
 
 ## Running it locally
 
@@ -458,6 +502,13 @@ reference to the DOM, which is what makes it straightforward to test.
 - **`.app` already has a flex `gap`**, so a margin between two of its children
   adds to it rather than replacing it. The fx row's spacing comes from the gap
   alone, and the keypad's height subtracts that gap along with the row.
+- **The rate services were never reached from the machine this was built on.**
+  Outbound access to them was blocked, so both response shapes are coded from
+  their documentation rather than verified against the live services, and the
+  browser tests run against stubbed responses. The parsers are strict for
+  exactly that reason: if a shape is wrong the screen says it has no rates,
+  rather than inventing some. If it ever does say that with a working
+  connection, the two `SOURCES` in `js/exchange.js` are the thing to check.
 - **An SVG element has no `hidden` property.** `el.hidden = false` on a `<g>`
   sets a JavaScript property and leaves the attribute — and the stylesheet —
   exactly where they were. Use `toggleAttribute`.

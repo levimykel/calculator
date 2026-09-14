@@ -110,13 +110,56 @@ body {
   display: block;
 }
 
-.topbar h1 {
-  margin: 0;
-  font-size: 1.05rem;
-  font-weight: 700;
-  letter-spacing: 0.2px;
-  color: var(--muted);
+/* In the accessibility tree, out of the way of the screen picker. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Three screens, all one tap away and all named. A chip labelled with where it
+   takes you only works while there is one other place to go. */
+.modes {
+  display: flex;
   margin-right: auto;
+  padding: 2px;
+  gap: 2px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.05);
+}
+
+.modes__item {
+  -webkit-appearance: none;
+  appearance: none;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  padding: 5px 10px;
+  cursor: pointer;
+  transition: background-color 130ms ease-out, color 130ms ease-out;
+  touch-action: manipulation;
+}
+
+.modes__item[aria-pressed="true"] {
+  background: var(--key);
+  color: var(--text);
+}
+
+.modes__item:active { background: var(--key-press); transition-duration: 0s; }
+
+.modes__item:focus-visible {
+  outline: 3px solid var(--eq);
+  outline-offset: 2px;
 }
 
 .chip {
@@ -446,15 +489,20 @@ body {
 
 /* ---------------------------------------------------------------- growth */
 
-/* One screen at a time. Everything is in the markup either way, so switching
-   is an attribute rather than a teardown. Portrait wants the two stacked,
-   which the app's own column already does, so the wrapper dissolves. */
-.growthwrap { display: none; }
-.app[data-mode="growth"] .growthwrap { display: contents; }
-.app[data-mode="growth"] :is(.history, .display, .pads) { display: none; }
+/* One screen at a time. Everything is in the markup whichever is showing, so
+   switching is an attribute rather than a teardown. Portrait wants the pane
+   and its pad stacked, which the app's own column already does, so the
+   wrapper dissolves. */
+.panes,
+.growth,
+.rates { display: none; }
+
+.app:is([data-mode="growth"], [data-mode="rates"]) .panes { display: contents; }
+.app:is([data-mode="growth"], [data-mode="rates"]) :is(.history, .display, .pads) { display: none; }
+.app[data-mode="growth"] .growth { display: flex; }
+.app[data-mode="rates"] .rates { display: flex; }
 
 .growth {
-  display: flex;
   flex: 1 1 auto;
   min-height: 0;
   flex-direction: column;
@@ -651,13 +699,119 @@ body {
   outline-offset: -3px;
 }
 
-.growthpad {
+/* ---------------------------------------------------------------- rates */
+
+.rates {
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* The list is the picker: no dropdown, no search, just every currency the
+   service quoted, the ones people reach for at the top. */
+.rates__list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--hairline);
+  border-radius: var(--radius);
+}
+
+.rates__list::-webkit-scrollbar { display: none; }
+
+.rate {
+  -webkit-appearance: none;
+  appearance: none;
+  border: 0;
+  background: var(--key-fn);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 9px 14px;
+  min-height: 44px;
+  text-align: left;
+  transition: background-color 140ms ease-out;
+  touch-action: none;
+}
+
+.rate:active,
+.rate.is-pressed { background: var(--key-fn-press); transition-duration: 0s; }
+
+.rate__code {
+  flex: 0 0 3.2em;
+  font-size: 0.86rem;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: var(--muted);
+}
+
+.rate__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rate__value {
+  flex: 0 0 auto;
+  font-size: clamp(1rem, 4.4vw, 1.2rem);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* The one being typed into. Sticky so it stays in view however far down the
+   list you scroll — it is the amount every other row is answering. */
+.rate--base {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--key);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.rate--base .rate__value { color: var(--accent); }
+.rate--base .rate__code { color: var(--text); }
+
+.rate:focus-visible {
+  outline: 3px solid var(--eq);
+  outline-offset: -3px;
+}
+
+/* Where the numbers came from and when. Never "today" unless it is. */
+.rates__source {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0 4px;
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-align: right;
+}
+
+.rates__source[data-state="stale"] { color: var(--accent); }
+.rates__source[data-state="none"] { color: var(--danger-press); }
+
+/* --------------------------------------------------------------- numpad */
+
+/* One pad, shared by the two screens that need digits rather than sums. */
+.numpad {
   flex: 0 0 auto;
   margin-top: auto;
   grid-template-columns: repeat(4, 1fr);
   grid-template-rows: repeat(4, 1fr);
   gap: 1px;
-  display: grid;
+  display: none;
   /* Four rows where the calculator has six, and less again: the fields and the
      chart above have to fit whole on the smallest phone without scrolling. */
   height: calc(var(--keypad-height) * 0.44);
@@ -665,6 +819,8 @@ body {
   border-radius: var(--radius);
   overflow: hidden;
 }
+
+.app:is([data-mode="growth"], [data-mode="rates"]) .numpad { display: grid; }
 
 /* Portrait wants the two stacked, which is what the app's own column already
    does — so the wrapper gets out of the way entirely. */
@@ -900,9 +1056,9 @@ body {
   .key--fn { font-size: clamp(0.85rem, 2.8vh, 1.2rem); }
   .key--op { font-size: clamp(1.05rem, 3.6vh, 1.6rem); }
 
-  /* Short and wide: the fields stand beside the pad rather than above it, the
+  /* Short and wide: the pane stands beside the pad rather than above it, the
      same answer the keypad's fx column gives to the same problem. */
-  .app[data-mode="growth"] .growthwrap {
+  .app:is([data-mode="growth"], [data-mode="rates"]) .panes {
     display: flex;
     flex-direction: row;
     gap: var(--gap);
@@ -910,6 +1066,7 @@ body {
     min-height: 0;
   }
 
+  .modes__item { font-size: 0.68rem; padding: 6px 9px; }
   .growth { gap: 6px; }
   .growth__answer { margin-top: 0; }
   .growth__when { font-size: 0.68rem; }
@@ -922,9 +1079,13 @@ body {
 
   /* A share of the row, not of the viewport: the app is capped at 560px wide,
      so a vw-based width would take most of what there is. */
-  .growth { flex: 1 1 auto; min-width: 0; }
+  .growth,
+  .rates { flex: 1 1 auto; min-width: 0; }
 
-  .growthpad {
+  .rate { min-height: 36px; padding: 4px 12px; }
+  .rate__name { display: none; }
+
+  .numpad {
     flex: 0 0 42%;
     width: auto;
     height: auto;
