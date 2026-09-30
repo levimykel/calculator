@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "mcp__Trellevi__add_checklist",
+      "mcp__Trellevi__add_checklist_items",
+      "mcp__Trellevi__add_comment",
+      "mcp__Trellevi__archive_card",
+      "mcp__Trellevi__archive_list_cards",
+      "mcp__Trellevi__complete_card",
+      "mcp__Trellevi__create_board",
+      "mcp__Trellevi__create_card",
+      "mcp__Trellevi__create_label",
+      "mcp__Trellevi__create_list",
+      "mcp__Trellevi__get_board",
+      "mcp__Trellevi__get_card",
+      "mcp__Trellevi__list_boards",
+      "mcp__Trellevi__list_cards",
+      "mcp__Trellevi__move_card",
+      "mcp__Trellevi__search_cards",
+      "mcp__Trellevi__snooze_card",
+      "mcp__Trellevi__unarchive_card",
+      "mcp__Trellevi__update_card",
+      "mcp__Trellevi__update_checklist_item",
+      "mcp__Trellevi__update_label",
+      "mcp__Trellevi__update_list",
+      "mcp__Trellevi__wake_card"
+    ],
+    "ask": [
+      "mcp__Trellevi__delete_card",
+      "mcp__Trellevi__delete_checklist",
+      "mcp__Trellevi__delete_checklist_item",
+      "mcp__Trellevi__delete_label",
+      "mcp__Trellevi__delete_list"
+    ]
+  }
+}
