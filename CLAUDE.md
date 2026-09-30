@@ -4,6 +4,10 @@ Notes for whoever — or whatever — picks this up next. The README explains th
 app to a reader; this file explains the project to someone about to change it.
 Read both. Where they overlap the README wins, because it is the one users see.
 
+The rules shared by all of Levi's apps are in
+[.claude/rules/base.md](.claude/rules/base.md), which loads with this file.
+What follows is only what's specific to Calcutron.
+
 ## The shape of it
 
 A calculator PWA with no build step. Plain HTML, CSS and ES modules, served as
@@ -60,24 +64,14 @@ Bump the version on every user-visible change. The service worker's bytes have
 to differ for the browser to notice an update at all, so shipping without a
 bump means nobody gets the change.
 
-## Git and release
+## Release
 
-- Deployed from `main` to GitHub Pages. A push to `main` is a release.
-- Work happens on `claude/calcutron-calculator-pwa-pwewjy`; the established
-  practice here is to land on `main` and fast-forward that branch to match, so
-  the two stay identical. Check with the user before changing that.
-- No pull request unless the user asks for one.
-- Commit messages: a short imperative subject saying what the change does for
-  the user, then a paragraph or two of *why* if the reason is not obvious from
-  the diff. Match the existing log.
+Deployed from `main` to GitHub Pages. A push to `main` is a release.
 
 ## Checking it in a real browser
 
 The unit tests do not touch the DOM, so anything about layout, gestures or the
-three-screen switching has to be checked in Chromium via Playwright. Chromium
-is pre-installed at `/opt/pw-browsers/chromium` with
-`PLAYWRIGHT_BROWSERS_PATH` already pointing at it — **do not run
-`playwright install`**.
+three-screen switching has to be checked in Chromium via Playwright.
 
 Suites have been built in the scratchpad rather than committed, because
 Playwright is not a dependency of this repo and the app has no server. The
@@ -185,21 +179,3 @@ Three decisions block the rest of it:
 Capacitor is the recommended shell (it can wrap this app as it stands, with the
 service worker doing the offline work it already does) but the user has not
 chosen yet. Do not assume it.
-
-`.claude/settings.json` pre-approves the Trellevi tools so board work does not
-prompt. The five `delete_*` tools are deliberately left on *ask* — deletion is
-irreversible there, and `archive_card` is the right tool nearly every time. The
-allow list names each tool rather than the whole server, so a delete tool added
-to Trellevi later cannot slip in pre-approved; a new non-delete tool needs
-adding to that list by hand.
-
-## House style
-
-The prose in this project — comments, the README, commit messages — is written
-for a person, in plain words, and explains *why* rather than restating the
-code. Comments are sparse and earn their place; most of them exist because
-something surprised us. Match that. A comment that says what the next line
-plainly says is worse than no comment.
-
-Names are ordinary English: `growthBottom`, `isFresh`, `accepts`. No
-abbreviations that a reader would have to decode.
