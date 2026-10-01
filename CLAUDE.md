@@ -157,12 +157,23 @@ runs on both seams when something is inserted into the middle of a number.
 Tests cover both directions; if you are changing insertion or deletion, read
 them first.
 
-## The store-launch board
+## The board
 
 Planning for shipping this as a native app lives on Trellevi, not in the repo:
-board `bdbe2bfe-0861-4f92-a961-143b8598e137`, **"Calcutron — App Store Launch"**.
-Lists: Decide / Accounts & legal / Build / Store listing / Ship / After launch
-/ Done. Labels: iOS, Android, Blocker, Long lead, Only you can do. 31 cards.
+board `bdbe2bfe-0861-4f92-a961-143b8598e137`, **"Calcutron"**.
+
+Columns, left to right: **In Progress** / Decide / Accounts & legal / Build /
+Store listing / Ship / After launch / Done. Labels: iOS, Android, Blocker,
+Long lead, Only you can do.
+
+In Progress is first on purpose: the board scrolls sideways on a phone, so what
+is being worked on now should be visible without scrolling to find it.
+
+The middle columns are **stages of the launch, not states of work** — a card
+sits in the stage it belongs to until someone picks it up. So the base rule
+about moving a card to In Progress means moving it *out* of its stage, and it
+goes back to that stage if it is put down unfinished. Done still means Levi has
+used it.
 
 Three decisions block the rest of it:
 
