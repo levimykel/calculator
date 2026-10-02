@@ -160,9 +160,9 @@ them first.
 ## The store-launch board
 
 Planning for shipping this as a native app lives on Trellevi, not in the repo:
-board `bdbe2bfe-0861-4f92-a961-143b8598e137`, **"Calcutron — App Store Launch"**.
-Lists: Decide / Accounts & legal / Build / Store listing / Ship / After launch
-/ Done. Labels: iOS, Android, Blocker, Long lead, Only you can do. 31 cards.
+board `bdbe2bfe-0861-4f92-a961-143b8598e137`, **"Calcutron"**.
+Lists: In Progress / Decide / Accounts & legal / Build / Store listing / Ship /
+After launch / Done. Labels: iOS, Android, Blocker, Long lead, Only you can do.
 
 Three decisions block the rest of it:
 
