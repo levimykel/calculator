@@ -1,6 +1,6 @@
 # Base rules for every project
 
-<!-- Version 1, 2026-09-30. Copied from levimykel/claude-rules (base.md).
+<!-- Version 2, 2026-10-02. Copied from levimykel/claude-rules (base.md).
      Don't edit this copy: change the source and sync it to every project, so
      they all stay the same. -->
 
@@ -10,10 +10,13 @@ disagree, the project's CLAUDE.md wins.
 
 ## Who you're working with
 
-- **Levi is usually on an iPhone or iPad, with no terminal.** Anything Levi has
-  to do must work in a browser: a dashboard, GitHub, or the app itself. Never
-  make a command-line step something Levi has to run. Do it through the MCP
-  tools, or give dashboard steps with direct links.
+- **Levi works mostly from an iPhone or iPad, with no terminal.** A Mac is
+  there when something can't be done any other way, but it's the exception.
+  Anything Levi has to do should work in a browser: a dashboard, GitHub, or the
+  app itself. Do it through the MCP tools, or give dashboard steps with direct
+  links. When a step really does need the Mac (a terminal command, Xcode, a
+  local install), say so upfront, say why there's no browser route, and give
+  the exact steps.
 - **Free plans by default.** If a suggestion costs money, say so upfront, with
   the price.
 - **Several apps, one person.** Billing, accounts, Terms of Service and privacy
