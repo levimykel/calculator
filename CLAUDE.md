@@ -42,7 +42,7 @@ render it.
 ## Running and testing
 
 ```sh
-npm test            # node --test 'test/*.test.js' — 166 tests, under a second
+npm test            # node --test 'test/*.test.js' — 172 tests, under a second
 npm start           # serves the folder on :8080
 npm run set-version 4.3.0
 ```
@@ -157,25 +157,70 @@ runs on both seams when something is inserted into the middle of a number.
 Tests cover both directions; if you are changing insertion or deletion, read
 them first.
 
-## The store-launch board
+## The board
 
 Planning for shipping this as a native app lives on Trellevi, not in the repo:
 board `bdbe2bfe-0861-4f92-a961-143b8598e137`, **"Calcutron"**.
-Lists: In Progress / Decide / Accounts & legal / Build / Store listing / Ship /
-After launch / Done. Labels: iOS, Android, Blocker, Long lead, Only you can do.
 
-Three decisions block the rest of it:
+Columns, left to right: **In Progress** / Decide / Accounts & legal / Build /
+Store listing / Ship / After launch / Done. Labels: iOS, Android, Blocker,
+Long lead, Only you can do.
 
-1. **Apple's 4.2 minimum-functionality rule.** A calculator wrapped from a web
-   app is exactly the shape of thing App Review rejects. Decide what makes this
-   one more than a website in a box before building anything.
-2. **Individual or company enrolment.** It sets the seller name buyers see and
-   is hard to change later; a company needs a D-U-N-S number, which has a long
-   lead time.
-3. **Google Play's closed-testing requirement** for new personal developer
-   accounts — a fixed number of testers for a fixed number of days before
-   production is even an option. It is a calendar constraint, not a work item.
+In Progress is first on purpose: the board scrolls sideways on a phone, so what
+is being worked on now should be visible without scrolling to find it.
 
-Capacitor is the recommended shell (it can wrap this app as it stands, with the
-service worker doing the offline work it already does) but the user has not
-chosen yet. Do not assume it.
+The middle columns are **stages of the launch, not states of work** — a card
+sits in the stage it belongs to until someone picks it up. So the base rule
+about moving a card to In Progress means moving it *out* of its stage, and it
+goes back to that stage if it is put down unfinished. Done still means Levi has
+used it.
+
+## Decisions so far
+
+Each of these has the full reasoning on its card; this is the line a future
+session needs so it does not reopen a settled question.
+
+**The shell is Capacitor** (decided 2026-10-03). It suits an app that is
+already offline-first with local assets, and it keeps one codebase behind the
+web app, iOS and eventually Android. Levi also wants to learn the tool, so
+routing around it for expedience would miss half the point. A Capacitor app
+*is* a Swift app — `npx cap add ios` generates a real Xcode project that gets
+committed — so this rules nothing native out. Rejected: TWA (Android only) and
+a native rewrite (throws away the tested parser and caret model). Accepted
+costs: slower cold start, webview scroll that never quite matches native, and
+inherited WebKit bugs. Start on Swift Package Manager — CocoaPods trunk goes
+read-only on 2 December 2026.
+
+**Native scope for App Review 4.2 is haptics plus App Intents** (decided
+2026-10-03). Enough to answer "what does this give me that the website
+doesn't": it is felt in the hand, and it integrates with Siri and Shortcuts. A
+home-screen widget was considered and deferred — not ruled out if a reviewer
+pushes back anyway.
+
+**The real 4.2 risk is "the ten-thousandth calculator", not "a website in a
+box".** Calcutron is not a web clipping: it is wholly offline and there is no
+site it fronts. The weaker spot is the *"not particularly useful, unique"*
+clause, and no amount of Swift answers that — the listing copy and the review
+notes have to, by leading with offline, the three tools and the caret editor.
+
+## Rules only this project has
+
+**No bundler, and native code must not change that.** Capacitor's plugins are
+reached through `globalThis.Capacitor?.Plugins?.X` at runtime, never by
+importing `@capacitor/...`. An import would pull in a package, a package would
+pull in a bundler, and the app would stop being files a browser can load
+directly. `js/haptics.js` is the worked example. A new plugin follows it.
+
+**Detect the bridge per call, not once at module load.** Capacitor injects its
+bridge into the webview, so what is true when a module first evaluates is not
+a safe thing to cache. A property lookup per keypress costs nothing.
+
+## Still open
+
+- **Individual or company enrolment.** Sets the seller name, hard to change
+  later, and a company needs a D-U-N-S number with a long lead time. It also
+  decides whether Play needs twelve testers — see the next line.
+- **Google Play's closed-testing rule**: 12 testers for 14 continuous days
+  before production, for personal accounts created after 13 November 2023.
+  **Organization accounts are exempt**, which ties this to the decision above.
+  A calendar constraint, not a work item.
