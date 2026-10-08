@@ -30,8 +30,15 @@ js/haptics.js       the haptics that iOS mostly refuses to give us
 js/update.js        the service-worker update handshake
 sw.js               the service worker
 version.js          the single source of truth for the version
+scripts/bundle.mjs  assembles www/ for the native shell
 test/               node:test, no runner, no framework
 ```
+
+`www/` is generated and git-ignored. The repo root is the web root, and it also
+holds `.git`, `node_modules` and the tests, so Capacitor's `webDir` cannot
+point at it — `npm run bundle` copies out just the files that ship. It takes
+the list from `sw.js`'s precache block rather than keeping a second one, so the
+two cannot drift.
 
 The split that matters: **everything except `js/app.js` is pure**. No DOM, no
 network, no globals. That is what makes the tests cheap and it is worth
@@ -42,8 +49,9 @@ render it.
 ## Running and testing
 
 ```sh
-npm test            # node --test 'test/*.test.js' — 172 tests, under a second
+npm test            # node --test 'test/*.test.js' — 176 tests, under a second
 npm start           # serves the folder on :8080
+npm run bundle      # assemble www/ — only the files that ship — for the shell
 npm run set-version 4.3.0
 ```
 
@@ -188,8 +196,9 @@ routing around it for expedience would miss half the point. A Capacitor app
 committed — so this rules nothing native out. Rejected: TWA (Android only) and
 a native rewrite (throws away the tested parser and caret model). Accepted
 costs: slower cold start, webview scroll that never quite matches native, and
-inherited WebKit bugs. Start on Swift Package Manager — CocoaPods trunk goes
-read-only on 2 December 2026.
+inherited WebKit bugs. Capacitor 8 creates iOS projects with Swift Package
+Manager by default, so there is nothing to opt into; with SPM the project to
+open is `ios/App/App.xcodeproj`, not an `.xcworkspace`.
 
 **Native scope for App Review 4.2 is haptics plus App Intents** (decided
 2026-10-03). Enough to answer "what does this give me that the website
