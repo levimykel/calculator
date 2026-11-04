@@ -1071,6 +1071,11 @@ function editAmount(rewrite) {
   renderRates();
 }
 
+/* A press paints the row, and nothing more.
+   The keypad acts on pointerdown so a key answers the instant it is touched,
+   and that was copied here — but a row sits inside a scrolling list, where
+   the same touch is how a scroll begins. Acting on it re-based the list under
+   the finger every time it was dragged. */
 ratesListEl.addEventListener('pointerdown', (event) => {
   if (event.button > 0) return;
   const button = event.target.closest('.rate');
@@ -1078,11 +1083,26 @@ ratesListEl.addEventListener('pointerdown', (event) => {
 
   button.classList.add('is-pressed');
   pressedKeys.set(event.pointerId, button);
+  // Worth doing on the touch rather than the tap: the audio context can only
+  // be woken inside a gesture, and waking it early hides the cost.
   warmUp();
+}, { passive: true });
+
+/* The choice is made here instead. `click` is the event that already means
+   "a tap, not a drag" — the browser withholds it once the gesture becomes a
+   scroll, which is exactly the discrimination this needs. It also covers
+   Space and Enter on a focused row, which produce no pointer events at all. */
+ratesListEl.addEventListener('click', (event) => {
+  const button = event.target.closest('.rate');
+  if (!button) return;
+
   play('fn');
   tap();
+  rebase(button.dataset.code);
+});
 
-  const code = button.dataset.code;
+/** Make `code` the currency everything else is quoted against. */
+function rebase(code) {
   if (code !== rateBase && snapshot) {
     // Carry the same money across rather than the same number: the figure
     // under the finger is the one that stays put.
@@ -1091,7 +1111,7 @@ ratesListEl.addEventListener('pointerdown', (event) => {
     rateBase = code;
   }
   renderRates();
-}, { passive: true });
+}
 
 /** What a converted amount looks like once it is something to type on. */
 function trimAmount(value) {
