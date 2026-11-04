@@ -663,7 +663,11 @@ body {
   min-height: 40px;
   text-align: left;
   transition: background-color 140ms ease-out;
-  touch-action: none;
+  /* A row lives inside a scrolling list, so a drag down it has to scroll.
+     Keys and the chart set `none` because a key must not scroll anything and
+     a drag across the chart scrubs it; copying that here made the list
+     impossible to scroll on a touchscreen. */
+  touch-action: pan-y;
 }
 
 .field:active,
@@ -740,7 +744,11 @@ body {
   min-height: 44px;
   text-align: left;
   transition: background-color 140ms ease-out;
-  touch-action: none;
+  /* A row lives inside a scrolling list, so a drag down it has to scroll.
+     Keys and the chart set `none` because a key must not scroll anything and
+     a drag across the chart scrubs it; copying that here made the list
+     impossible to scroll on a touchscreen. */
+  touch-action: pan-y;
 }
 
 .rate:active,

@@ -1,2 +1,5 @@
 node_modules/
 .DS_Store
+
+# Assembled by `npm run bundle` for the native shell; never edited by hand.
+www/
