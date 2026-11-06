@@ -22,6 +22,7 @@ js/calculator.js    the expression engine — parser, evaluator, caret model
 js/growth.js        compound growth arithmetic
 js/chart.js         chart geometry
 js/rates.js         currencies, conversion, formatting, reading a rates payload
+js/units.js         temperature, length, mass, shoe size — constant, no network
 js/exchange.js      the only code in the project that touches the network
 js/app.js           every piece of DOM wiring, for all three screens
 js/history.js       the tape
@@ -49,7 +50,7 @@ render it.
 ## Running and testing
 
 ```sh
-npm test            # node --test 'test/*.test.js' — 176 tests, under a second
+npm test            # node --test 'test/*.test.js' — 195 tests, under a second
 npm start           # serves the folder on :8080
 npm run bundle      # assemble www/ — only the files that ship — for the shell
 npm run set-version 4.3.0
@@ -182,6 +183,30 @@ sits in the stage it belongs to until someone picks it up. So the base rule
 about moving a card to In Progress means moving it *out* of its stage, and it
 goes back to that stage if it is put down unfinished. Done still means Levi has
 used it.
+
+## The Convert screen
+
+Money and units share one screen, one list and one set of rows. `js/app.js`
+renders money through `renderRates` and everything else through `renderUnits`;
+the row building is common to both.
+
+**Every unit carries a `to`/`from` pair, never a multiplier.** °F = °C × 9/5 + 32
+is affine, so a factor cannot express it — and temperature is the whole point of
+the feature. The pair makes Fahrenheit ordinary instead of a special case, and
+`ratio()` keeps the boring units short. A new unit follows that shape even where
+a factor would do.
+
+The action key on the shared numpad does a different job per category: money can
+be refreshed, so it is `↻`; a unit cannot, so it is `±`, which temperature
+genuinely needs and money never does.
+
+Only money has a source line. `renderRatesSource` unhides that element and the
+unit categories hide it again, so whichever drew last owns it.
+
+Shoe sizes are a convention, not a measurement. The spine is foot length in cm;
+UK steps by a barleycorn and EU by a Paris point, and the men's/women's switch
+moves only the US column, because UK and EU do not change between them. The
+screen carries a visible "approximate" note and should keep it.
 
 ## Decisions so far
 

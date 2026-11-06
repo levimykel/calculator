@@ -40,7 +40,7 @@
     <div class="modes" id="modes">
       <button class="modes__item" type="button" data-mode="calc" aria-pressed="true">Calc</button>
       <button class="modes__item" type="button" data-mode="growth" aria-pressed="false">Growth</button>
-      <button class="modes__item" type="button" data-mode="rates" aria-pressed="false">Rates</button>
+      <button class="modes__item" type="button" data-mode="convert" aria-pressed="false">Convert</button>
     </div>
     <button class="chip chip--icon" id="soundToggle" type="button" data-level="soft" aria-label="Key sounds: soft. Tap for louder.">
       <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -50,7 +50,7 @@
         <path class="icon__cross" d="M15.8 9.8l4.4 4.4M20.2 9.8l-4.4 4.4"/>
       </svg>
     </button>
-    <button class="chip" id="versionChip" type="button" aria-live="polite">v4.2.1</button>
+    <button class="chip" id="versionChip" type="button" aria-live="polite">v4.3.0</button>
   </header>
 
   <section class="history" aria-label="History">
@@ -109,9 +109,12 @@
     <div class="growth__fields" id="growthFields"></div>
   </section>
 
-  <!-- Currency. The list is the picker: type an amount against the currency at
-       the top, read the rest, tap one to carry the same money into it. -->
-  <section class="rates" id="rates" aria-label="Currency">
+  <!-- Convert. The list is the picker: type a number against the thing at the
+       top, read the rest, tap one to carry the value into it. Money is one
+       category of this, not a separate screen. -->
+  <section class="rates" id="rates" aria-label="Convert">
+    <div class="cats" id="convertCats" aria-label="What to convert"></div>
+    <div class="cats cats--variant" id="convertVariant" hidden></div>
     <div class="rates__list" id="ratesList"></div>
     <p class="rates__source" id="ratesSource"></p>
   </section>

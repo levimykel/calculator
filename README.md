@@ -31,8 +31,9 @@ full screen and offline, like a native app.
 - A second screen for compound growth: a starting amount, a monthly
   contribution, a rate and a horizon, projected to a balance as you type, with
   a chart you can drag along to read any year
-- A currency screen: type an amount and read it in every currency at once, at
-  the day's rates, kept for when there is no signal
+- A Convert screen: type a number against one thing and read it as everything
+  else at once. Money, at the day's rates and kept for when there is no signal;
+  temperature, length, mass and shoe size, which need no network at all
 - Works with no network once installed
 - Shows its version, and updates on your say-so rather than mid-calculation
 
@@ -97,6 +98,23 @@ past which a projection stops being a projection.
 **What it is not.** There is no inflation adjustment, no tax, no varying
 contributions, and the currency is a plain `$` — `CURRENCY` in `js/growth.js`
 is the one place that is decided.
+
+## Convert
+
+One screen, five categories. Money is the one that needs a network; the rest are
+constants, so they work offline forever and have no date to print.
+
+Temperature is the reason the units are built the way they are. Every unit
+carries a `to`/`from` pair rather than a multiplier, because °F = °C × 9/5 + 32
+is affine and no single factor expresses it. Giving every unit the pair makes
+Fahrenheit ordinary instead of a special case.
+
+Shoe sizes are the odd one out and the screen says so. They are a convention
+rather than a measurement: one brand's UK 9 is not another's. The spine is foot
+length in centimetres — UK sizes step by a barleycorn, a third of an inch, and
+EU sizes by a Paris point, two thirds of a centimetre — and the US column is
+the only thing the men's/women's switch moves, because UK and EU sizes do not
+change between them.
 
 ## Currency
 
