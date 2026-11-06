@@ -9,8 +9,8 @@ import {
 } from './rates.js';
 import {
   CATEGORIES, categoryOf, unitsOf, unitOf, defaultVariant,
-  convert as convertUnit, formatValue, formatEntry as formatUnitEntry,
-  accepts as acceptsUnit,
+  convert as convertUnit, formatEntry as formatUnitEntry, accepts as acceptsUnit,
+  valueOf as unitValueOf, display as unitDisplay, rawOf as unitRaw,
 } from './units.js';
 import { Exchange } from './exchange.js';
 import { History } from './history.js';
@@ -1121,8 +1121,19 @@ const TABS = [{ key: MONEY, label: 'Money' },
 
 let category = MONEY;
 let variant = null;
-let unitCode = null;
-let unitAmount = '';
+
+/* Each category keeps its own figure in its own unit. A height in centimetres
+   is not a shoe size and not a temperature, and carrying one into the next was
+   only ever going to produce nonsense. */
+const held = new Map();
+
+function heldFor(key) {
+  if (!held.has(key)) {
+    const spec = categoryOf(key);
+    held.set(key, { unit: spec.start, amount: spec.startValue ?? '' });
+  }
+  return held.get(key);
+}
 
 function loadConvert() {
   let wanted = MONEY;
@@ -1131,10 +1142,23 @@ function loadConvert() {
     const saved = JSON.parse(readStored(CONVERT_KEY, 'null'));
     if (saved && typeof saved.category === 'string') wanted = saved.category;
     if (saved && typeof saved.variant === 'string') wantedVariant = saved.variant;
+    for (const [key, entry] of Object.entries(saved?.held ?? {})) {
+      const spec = CATEGORIES.find((item) => item.key === key);
+      if (!spec || typeof entry?.amount !== 'string') continue;
+      const unit = unitsOf(spec, defaultVariant(spec)).some((u) => u.code === entry.unit)
+        ? entry.unit : spec.start;
+      held.set(key, { unit, amount: entry.amount });
+    }
   } catch {
     // Whatever was there is not worth a broken screen.
   }
   setCategory(TABS.some((tab) => tab.key === wanted) ? wanted : MONEY, wantedVariant, false);
+}
+
+function saveConvert() {
+  store(CONVERT_KEY, JSON.stringify({
+    category, variant, held: Object.fromEntries(held),
+  }));
 }
 
 function setCategory(next, wantedVariant = null, redraw = true) {
@@ -1142,18 +1166,15 @@ function setCategory(next, wantedVariant = null, redraw = true) {
 
   if (category === MONEY) {
     variant = null;
-    unitCode = null;
   } else {
     const spec = categoryOf(category);
     const allowed = spec.variants?.some((entry) => entry.key === wantedVariant);
     variant = allowed ? wantedVariant : defaultVariant(spec);
-    // The number survives the switch; the unit it is in cannot, so each
-    // category opens on the one people reach for.
-    unitCode = spec.start;
+    heldFor(category);
   }
 
   applyPadAction();
-  store(CONVERT_KEY, JSON.stringify({ category, variant }));
+  saveConvert();
   if (redraw) renderConvert();
 }
 
@@ -1196,8 +1217,9 @@ function renderChips(host, items, current, kind) {
 function renderUnits() {
   const spec = categoryOf(category);
   const units = unitsOf(spec, variant);
-  const from = unitOf(spec, variant, unitCode) ?? units[0];
-  const value = Number(unitAmount === '' ? '0' : unitAmount) || 0;
+  const mine = heldFor(category);
+  const from = unitOf(spec, variant, mine.unit) ?? units[0];
+  const value = unitValueOf(mine.amount, from);
 
   const codes = units.map((unit) => unit.code);
   if (rowKey(codes) !== ratesListEl.dataset.codes) {
@@ -1210,8 +1232,8 @@ function renderUnits() {
     if (!row) continue;
     const isBase = unit.code === from.code;
     row.value.textContent = isBase
-      ? formatUnitEntry(unitAmount)
-      : formatValue(convertUnit(value, from, unit), unit);
+      ? formatUnitEntry(mine.amount, unit)
+      : unitDisplay(convertUnit(value, from, unit), unit);
     row.button.classList.toggle('rate--base', isBase);
     row.button.setAttribute('aria-current', String(isBase));
     row.button.setAttribute('aria-label', isBase
@@ -1223,12 +1245,15 @@ function renderUnits() {
   ratesSourceEl.dataset.state = spec.caveat ? 'note' : 'none';
   ratesSourceEl.textContent = spec.caveat ?? '';
   ratesSourceEl.hidden = !spec.caveat;
+  saveConvert();
 }
 
 function editUnitAmount(rewrite) {
-  const raw = rewrite(unitAmount);
-  if (acceptsUnit(raw) && (raw === '' || raw === '-' || Math.abs(Number(raw)) <= 1e12)) {
-    unitAmount = raw;
+  const mine = heldFor(category);
+  const unit = unitOf(categoryOf(category), variant, mine.unit);
+  const raw = rewrite(mine.amount);
+  if (acceptsUnit(raw, unit) && (raw === '' || raw === '-' || Math.abs(unitValueOf(raw, unit)) <= 1e12)) {
+    mine.amount = raw;
   }
   renderUnits();
 }
@@ -1236,13 +1261,14 @@ function editUnitAmount(rewrite) {
 /** Carry the measurement into the unit that was tapped, not the number. */
 function rebaseUnit(code) {
   const spec = categoryOf(category);
-  const from = unitOf(spec, variant, unitCode);
+  const mine = heldFor(category);
+  const from = unitOf(spec, variant, mine.unit);
   const to = unitOf(spec, variant, code);
   if (!to || !from || to.code === from.code) return;
 
-  const carried = convertUnit(Number(unitAmount === '' ? '0' : unitAmount) || 0, from, to);
-  if (carried !== null) unitAmount = formatValue(carried, to);
-  unitCode = code;
+  const carried = convertUnit(unitValueOf(mine.amount, from), from, to);
+  if (carried !== null) mine.amount = unitRaw(carried, to);
+  mine.unit = code;
   renderUnits();
 }
 
@@ -1306,7 +1332,7 @@ convertVariantEl.addEventListener('click', (event) => {
   play('fn');
   tap();
   variant = chip.dataset.variant;
-  store(CONVERT_KEY, JSON.stringify({ category, variant }));
+  saveConvert();
   renderConvert();
 });
 

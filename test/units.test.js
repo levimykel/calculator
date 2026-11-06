@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   CATEGORIES, categoryOf, unitsOf, unitOf, defaultVariant,
-  convert, formatValue, formatEntry, accepts,
+  convert, formatValue, formatEntry, accepts, valueOf, display, rawOf,
 } from '../js/units.js';
 
 const pick = (categoryKey, code, variant = null) =>
@@ -166,4 +166,82 @@ test('the row being typed into shows exactly what was typed', () => {
   assert.equal(formatEntry(''), '0');
   assert.equal(formatEntry('20.'), '20.');
   assert.equal(formatEntry('-'), '-');
+});
+
+/* ---------------------------------------------------- feet and inches */
+
+const feet = () => pick('length', 'ft in');
+const cm = () => pick('length', 'cm');
+
+test('a height in centimetres reads as feet and inches', () => {
+  assert.equal(display(convert(178, cm(), feet()), feet()), '5′ 10″');
+  assert.equal(display(convert(152.4, cm(), feet()), feet()), '5′ 0″');
+});
+
+test('the decimal key separates the feet from the inches', () => {
+  // 5 . 1 0 is five foot ten, not five point one feet.
+  close(valueOf('5.10', feet()), 5 + 10 / 12, 1e-9, "5'10 in feet");
+  close(convert(valueOf('5.10', feet()), feet(), cm()), 177.8, 0.05, "5'10 in cm");
+  close(valueOf('6', feet()), 6, 1e-9, 'a round six foot');
+});
+
+test('the inch mark appears as soon as the decimal key is pressed', () => {
+  // Otherwise that key looks broken: nothing visible would change.
+  assert.equal(formatEntry('5', feet()), '5′');
+  assert.equal(formatEntry('5.', feet()), '5′ 0″');
+  assert.equal(formatEntry('5.1', feet()), '5′ 1″');
+  assert.equal(formatEntry('5.10', feet()), '5′ 10″');
+});
+
+test('twelve inches is never how you write a foot', () => {
+  assert.ok(accepts('5.11', feet()));
+  assert.ok(!accepts('5.12', feet()), 'that is six foot');
+  assert.ok(!accepts('5.123', feet()));
+  assert.ok(accepts('5.', feet()), 'mid-typing');
+});
+
+test('tapping into feet and inches leaves something typeable behind', () => {
+  // The row becomes the one being typed into, so what it holds has to be
+  // text the keypad could have produced.
+  assert.equal(rawOf(convert(178, cm(), feet()), feet()), '5.10');
+  assert.equal(rawOf(convert(152.4, cm(), feet()), feet()), '5');
+});
+
+test('a rounded-up inch carries into the next foot', () => {
+  // 11.6 inches must not print as 5' 12".
+  const almost = convert(182.8, cm(), feet());
+  assert.equal(display(almost, feet()), '6′ 0″');
+});
+
+/* ------------------------------------------------- what each one opens on */
+
+test('every category opens on a figure, in a unit it has', () => {
+  const expected = {
+    temperature: ['°C', '25'],
+    length: ['cm', '178'],
+    mass: ['lb', '160'],
+    shoe: ['US', '8.5'],
+  };
+  for (const category of CATEGORIES) {
+    const [unit, value] = expected[category.key];
+    assert.equal(category.start, unit, `${category.key} starts in the wrong unit`);
+    assert.equal(category.startValue, value, `${category.key} starts on the wrong figure`);
+    assert.ok(unitsOf(category, defaultVariant(category)).some((u) => u.code === unit));
+  }
+});
+
+test('the figures each category opens on are sensible ones', () => {
+  // A person-shaped default beats zero: the screen shows what it does.
+  close(convert(25, pick('temperature', '°C'), pick('temperature', '°F')), 77, 1e-9, '25C');
+  assert.equal(display(convert(178, cm(), feet()), feet()), '5′ 10″');
+  close(convert(160, pick('mass', 'lb'), pick('mass', 'kg')), 72.57, 0.01, '160lb');
+  close(convert(8.5, pick('shoe', 'US', 'men'), pick('shoe', 'UK', 'men')), 7.5, 1e-9, 'US 8.5');
+});
+
+test('only shoe sizes have variants to switch between', () => {
+  for (const category of CATEGORIES) {
+    const has = Boolean(category.variants);
+    assert.equal(has, category.key === 'shoe',
+      `${category.key} ${has ? 'has' : 'lacks'} variants unexpectedly`);
+  }
 });

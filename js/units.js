@@ -20,6 +20,55 @@ function ratio(factor) {
   return { to: (v) => v * factor, from: (v) => v / factor };
 }
 
+/**
+ * Feet and inches, which is written as two numbers and so needs more than a
+ * `to`/`from` pair.
+ *
+ * Its numeric value is plain decimal feet, so the conversion itself stays
+ * ordinary; what is special is only how that number is written down and read
+ * back. The decimal key is the separator — 5 . 1 0 is five foot ten — which
+ * is the key already under the thumb and means no new one has to appear.
+ *
+ * Four small jobs, and they are not interchangeable:
+ *   parse   what was typed -> decimal feet
+ *   entry   what was typed -> what the row being typed into shows
+ *   display decimal feet   -> what a converted row shows
+ *   raw     decimal feet   -> something typeable, for when this unit is tapped
+ */
+const feetAndInches = {
+  ...ratio(0.3048),
+  parse(text) {
+    const [whole = '', part = ''] = text.split('.');
+    return (Number(whole) || 0) + (Number(part) || 0) / 12;
+  },
+  entry(text) {
+    const [whole = '', part] = text.split('.');
+    // The inch mark appearing is what tells you the decimal key did something.
+    return part === undefined ? `${whole || 0}′` : `${whole || 0}′ ${part || 0}″`;
+  },
+  display(feet) {
+    const [whole, inches] = splitFeet(feet);
+    return `${whole}′ ${inches}″`;
+  },
+  raw(feet) {
+    const [whole, inches] = splitFeet(feet);
+    return inches === 0 ? String(whole) : `${whole}.${inches}`;
+  },
+  accepts(text) {
+    if (!/^\d{0,3}(\.\d{0,2})?$/.test(text)) return false;
+    const [, part = ''] = text.split('.');
+    // Twelve inches is a foot, so it is never the right way to write one.
+    return part === '' || Number(part) < 12;
+  },
+};
+
+function splitFeet(feet) {
+  let whole = Math.floor(feet);
+  let inches = Math.round((feet - whole) * 12);
+  if (inches >= 12) { whole += 1; inches = 0; }
+  return [whole, inches];
+}
+
 /* ------------------------------------------------------------- shoe sizes */
 
 /**
@@ -69,6 +118,7 @@ export const CATEGORIES = [
     label: 'Temp',
     name: 'Temperature',
     start: '°C',
+    startValue: '25',
     units: [
       { code: '°C', name: 'Celsius', decimals: 1, to: (v) => v, from: (v) => v },
       { code: '°F', name: 'Fahrenheit', decimals: 1,
@@ -82,14 +132,20 @@ export const CATEGORIES = [
     label: 'Length',
     name: 'Length',
     start: 'cm',
+    startValue: '178',
+    /* Ordered by what people reach for, the way the currency list is: only
+       about seven rows fit on a phone, and feet-and-inches is the one most
+       likely to be wanted, so it must not sit below the fold. Kilometres and
+       miles come last because a height in them is a row of zeroes. */
     units: [
-      { code: 'mm', name: 'Millimetre', decimals: 0, ...ratio(0.001) },
       { code: 'cm', name: 'Centimetre', decimals: 1, ...ratio(0.01) },
       { code: 'm', name: 'Metre', decimals: 2, ...ratio(1) },
-      { code: 'km', name: 'Kilometre', decimals: 3, ...ratio(1000) },
+      { code: 'ft in', name: 'Feet & inches', decimals: 2, ...feetAndInches },
       { code: 'in', name: 'Inch', decimals: 1, ...ratio(0.0254) },
       { code: 'ft', name: 'Foot', decimals: 2, ...ratio(0.3048) },
       { code: 'yd', name: 'Yard', decimals: 2, ...ratio(0.9144) },
+      { code: 'mm', name: 'Millimetre', decimals: 0, ...ratio(0.001) },
+      { code: 'km', name: 'Kilometre', decimals: 3, ...ratio(1000) },
       { code: 'mi', name: 'Mile', decimals: 3, ...ratio(1609.344) },
     ],
   },
@@ -97,7 +153,8 @@ export const CATEGORIES = [
     key: 'mass',
     label: 'Mass',
     name: 'Mass',
-    start: 'kg',
+    start: 'lb',
+    startValue: '160',
     units: [
       { code: 'g', name: 'Gram', decimals: 0, ...ratio(0.001) },
       { code: 'kg', name: 'Kilogram', decimals: 2, ...ratio(1) },
@@ -110,7 +167,8 @@ export const CATEGORIES = [
     key: 'shoe',
     label: 'Shoes',
     name: 'Shoe size',
-    start: 'UK',
+    start: 'US',
+    startValue: '8.5',
     /** Shown under the rows: these numbers are a guide, and should say so. */
     caveat: 'Approximate — brands vary by half a size',
     variants: [
@@ -153,6 +211,25 @@ export function convert(value, from, to) {
   return Number.isFinite(converted) ? converted : null;
 }
 
+/** What was typed, as a number this unit understands. */
+export function valueOf(raw, unit) {
+  if (unit?.parse) return unit.parse(raw === '' ? '0' : raw);
+  const value = Number(raw === '' || raw === '-' ? '0' : raw);
+  return Number.isFinite(value) ? value : 0;
+}
+
+/** A converted figure, written the way this unit is written. */
+export function display(value, unit) {
+  if (value === null || !Number.isFinite(value)) return '—';
+  return unit?.display ? unit.display(value) : formatValue(value, unit);
+}
+
+/** A converted figure, as something that could have been typed. */
+export function rawOf(value, unit) {
+  if (value === null || !Number.isFinite(value)) return '';
+  return unit?.raw ? unit.raw(value) : formatValue(value, unit);
+}
+
 /**
  * Rounded the way the unit is actually quoted — shoe sizes to the half, EU
  * sizes to the whole — then fixed to its decimals.
@@ -179,13 +256,15 @@ function trimZeros(text) {
  * "9 UK" for a shoe size, when the row already says UK. The entry is told
  * apart by its colour and its marker, the same way the currency list does it.
  */
-export function formatEntry(raw) {
+export function formatEntry(raw, unit) {
+  if (unit?.entry) return unit.entry(raw);
   return raw === '' ? '0' : raw;
 }
 
 /** True while `raw` is something a unit field is allowed to hold. */
-export function accepts(raw) {
+export function accepts(raw, unit) {
   if (raw === '') return true;
+  if (unit?.accepts) return unit.accepts(raw);
   if (!/^-?\d*\.?\d*$/.test(raw)) return false;
   const [, decimals = ''] = raw.split('.');
   return decimals.length <= 4;

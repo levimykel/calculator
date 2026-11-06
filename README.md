@@ -104,6 +104,11 @@ is the one place that is decided.
 One screen, five categories. Money is the one that needs a network; the rest are
 constants, so they work offline forever and have no date to print.
 
+Each category keeps its own figure in its own unit, so a height in centimetres
+does not become a temperature when you switch. Heights can go in as feet and
+inches: pick that row and the decimal key separates the two, so 5 . 1 0 is five
+foot ten.
+
 Temperature is the reason the units are built the way they are. Every unit
 carries a `to`/`from` pair rather than a multiplier, because °F = °C × 9/5 + 32
 is affine and no single factor expresses it. Giving every unit the pair makes
