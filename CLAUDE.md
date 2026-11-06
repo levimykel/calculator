@@ -50,15 +50,17 @@ render it.
 ## Running and testing
 
 ```sh
-npm test            # node --test 'test/*.test.js' — 204 tests, under a second
+npm test            # node --test 'test/*.test.js' — 208 tests, under a second
 npm start           # serves the folder on :8080
 npm run bundle      # assemble www/ — only the files that ship — for the shell
 npm run set-version 4.3.0
 ```
 
-`npm test` is the whole gate. CI (`.github/workflows/pages.yml`) runs it and
-refuses to deploy if it fails, so a red test is a broken release, not a
-warning.
+`npm test` is the whole gate. CI (`.github/workflows/pages.yml`) runs it on
+every pull request and again on the push to `main`, and refuses to deploy if
+it fails — so a red test is a broken release, not a warning. Concurrency is on
+the deploy job rather than the workflow, so two open pull requests do not
+cancel each other's tests.
 
 ### The version is written in four places
 
@@ -111,10 +113,19 @@ The agent proxy blocks every exchange-rate host (403 on CONNECT). `js/exchange.j
 therefore cannot be exercised end to end from here, and anything that claims to
 have done so is mistaken.
 
-The ECB source (`api.frankfurter.dev`) *is* known to work: it was proved by
-accident when a test reached the live network on CI and failed on real rates
-that `fromFrankfurter` had parsed correctly. **The fallback,
-`open.er-api.com`, has never returned a live response and remains unverified.**
+**Both sources are now proven against real responses, neither of them from
+here.** The ECB source (`api.frankfurter.dev`) was proved by accident, when a
+test reached the live network on CI and failed on real rates that
+`fromFrankfurter` had parsed correctly. The fallback (`open.er-api.com`) went
+unexercised for months — written, shipped and never once run against the real
+thing — until Levi fetched it on his phone on 2026-11-06 and pasted the reply
+in. `fromOpenExchange` read it correctly: base, the date off the unix stamp,
+and every rate kept.
+
+That reply is now a fixture in `test/rates.test.js`, trimmed but verbatim in
+shape. **If either reader needs changing, get a real response rather than
+inventing one** — the sandbox cannot reach these hosts, so a made-up payload
+only tests what we imagined the service sends.
 
 That accident also left a rule behind. `test/exchange.test.js` installs a
 module-level stub:

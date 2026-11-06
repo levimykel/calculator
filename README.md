@@ -139,6 +139,7 @@ is no use to it.
    reference rates. Published each working day; at a weekend the newest set is
    Friday's, and the screen says so.
 2. **open.er-api.com** — wider coverage, used when the first cannot be reached.
+   Verified against a real response on 6 November 2026.
 
 `js/rates.js` reads either shape and believes neither on sight: the base must
 be a currency code, the date an ISO day, and every rate a finite number above
