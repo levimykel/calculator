@@ -497,10 +497,10 @@ body {
 .growth,
 .rates { display: none; }
 
-.app:is([data-mode="growth"], [data-mode="rates"]) .panes { display: contents; }
-.app:is([data-mode="growth"], [data-mode="rates"]) :is(.history, .display, .pads) { display: none; }
+.app:is([data-mode="growth"], [data-mode="convert"]) .panes { display: contents; }
+.app:is([data-mode="growth"], [data-mode="convert"]) :is(.history, .display, .pads) { display: none; }
 .app[data-mode="growth"] .growth { display: flex; }
-.app[data-mode="rates"] .rates { display: flex; }
+.app[data-mode="convert"] .rates { display: flex; }
 
 .growth {
   flex: 1 1 auto;
@@ -712,10 +712,54 @@ body {
   gap: 6px;
 }
 
+/* The category row. Horizontally scrollable because the names will not all
+   fit on a narrow phone, and `pan-x` for the same reason the rate rows are
+   `pan-y`: a drag along it has to scroll rather than pick. */
+.cats {
+  display: flex;
+  gap: 5px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex: 0 0 auto;
+  touch-action: pan-x;
+  padding-bottom: 1px;
+}
+
+.cats::-webkit-scrollbar { display: none; }
+
+.cat {
+  -webkit-appearance: none;
+  appearance: none;
+  border: 0;
+  flex: 0 0 auto;
+  background: var(--key-fn);
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.8rem;
+  padding: 7px 13px;
+  min-height: 34px;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 140ms ease-out, color 140ms ease-out;
+}
+
+.cat[aria-pressed="true"] { background: var(--accent); color: #2a1600; font-weight: 600; }
+.cat:active, .cat.is-pressed { background: var(--key-fn-press); transition-duration: 0s; }
+.cat[aria-pressed="true"]:active { background: var(--accent-press); }
+
+/* The men's / women's switch, which only shoe sizes show. Quieter than the
+   categories above it: it is a detail of one of them, not a peer. */
+.cats--variant .cat { font-size: 0.74rem; min-height: 30px; padding: 5px 11px; }
+.cats--variant .cat[aria-pressed="true"] { background: var(--key); color: var(--text); }
+
 /* The list is the picker: no dropdown, no search, just every currency the
    service quoted, the ones people reach for at the top. */
 .rates__list {
-  flex: 1 1 auto;
+  /* Sized to its rows rather than stretched to the pane: money has thirty of
+     them and fills this anyway, but temperature has three, and a mostly empty
+     panel under them looks like something failed to load. */
+  flex: 0 1 auto;
   min-height: 0;
   overflow-y: auto;
   scrollbar-width: none;
@@ -828,7 +872,7 @@ body {
   overflow: hidden;
 }
 
-.app:is([data-mode="growth"], [data-mode="rates"]) .numpad { display: grid; }
+.app:is([data-mode="growth"], [data-mode="convert"]) .numpad { display: grid; }
 
 /* Portrait wants the two stacked, which is what the app's own column already
    does — so the wrapper gets out of the way entirely. */
@@ -1066,7 +1110,7 @@ body {
 
   /* Short and wide: the pane stands beside the pad rather than above it, the
      same answer the keypad's fx column gives to the same problem. */
-  .app:is([data-mode="growth"], [data-mode="rates"]) .panes {
+  .app:is([data-mode="growth"], [data-mode="convert"]) .panes {
     display: flex;
     flex-direction: row;
     gap: var(--gap);

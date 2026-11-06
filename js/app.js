@@ -7,6 +7,11 @@ import {
   DEFAULT_BASE, convert, order, formatAmount, formatEntry, formatRate, formatDay,
   currencyName,
 } from './rates.js';
+import {
+  CATEGORIES, categoryOf, unitsOf, unitOf, defaultVariant,
+  convert as convertUnit, formatValue, formatEntry as formatUnitEntry,
+  accepts as acceptsUnit,
+} from './units.js';
 import { Exchange } from './exchange.js';
 import { History } from './history.js';
 import { play, warmUp, soundLevel, cycleSoundLevel } from './feedback.js';
@@ -34,6 +39,8 @@ const padAction = document.getElementById('padAction');
 const modesEl = document.getElementById('modes');
 const ratesListEl = document.getElementById('ratesList');
 const ratesSourceEl = document.getElementById('ratesSource');
+const convertCatsEl = document.getElementById('convertCats');
+const convertVariantEl = document.getElementById('convertVariant');
 const growthFieldsEl = document.getElementById('growthFields');
 const growthBalanceEl = document.getElementById('growthBalance');
 const growthWhenEl = document.getElementById('growthWhen');
@@ -158,7 +165,7 @@ function lengthBucket(length) {
 const SILENT = new Set(['caretLeft', 'caretRight', 'caretHome', 'caretEnd']);
 
 /** What the two typing screens answer to, and what only they answer to. */
-const FIELD_ACTIONS = new Set(['nextField', 'previousField', 'refreshRates']);
+const FIELD_ACTIONS = new Set(['nextField', 'previousField', 'refreshRates', 'negateUnit']);
 const PAD_ACTIONS = new Set([
   'digit', 'decimal', 'backspace', 'clearOrBack', 'clearAll', 'equals', ...FIELD_ACTIONS,
 ]);
@@ -174,7 +181,7 @@ function voiceFor(action) {
 
 function perform(action, dataset = {}) {
   if (mode === 'growth') return performGrowth(action, dataset);
-  if (mode === 'rates') return performRates(action, dataset);
+  if (mode === 'convert') return performConvert(action, dataset);
 
   switch (action) {
     case 'digit': calc.digit(dataset.digit); break;
@@ -943,7 +950,7 @@ function renderRates() {
   // Rows are kept and rewritten rather than rebuilt: a list this long, redrawn
   // on every keypress, is the one place here that could feel slow.
   if (rowKey(codes) !== ratesListEl.dataset.codes) {
-    buildRateRows(codes);
+    buildRateRows(codes.map((code) => ({ code, name: currencyName(code) })));
     ratesListEl.dataset.codes = rowKey(codes);
   }
 
@@ -970,11 +977,12 @@ function rowKey(codes) {
   return codes.join(',');
 }
 
-function buildRateRows(codes) {
+/** @param {{code: string, name: string}[]} items */
+function buildRateRows(items) {
   rateRows.clear();
   ratesListEl.replaceChildren();
 
-  for (const code of codes) {
+  for (const { code, name: label2 } of items) {
     const button = document.createElement('button');
     button.className = 'rate';
     button.type = 'button';
@@ -986,7 +994,7 @@ function buildRateRows(codes) {
 
     const name = document.createElement('span');
     name.className = 'rate__name';
-    name.textContent = currencyName(code);
+    name.textContent = label2;
 
     const value = document.createElement('span');
     value.className = 'rate__value';
@@ -999,6 +1007,8 @@ function buildRateRows(codes) {
 
 /** Where the numbers came from and when — never "today" unless it is. */
 function renderRatesSource() {
+  // Shared with the unit categories' caveat line, which hides it.
+  ratesSourceEl.hidden = false;
   if (!snapshot) {
     ratesSourceEl.dataset.state = checking ? 'checking' : 'none';
     ratesSourceEl.textContent = checking
@@ -1038,7 +1048,9 @@ async function refreshRates({ force = false } = {}) {
   renderRatesSource();
 }
 
-function performRates(action, dataset) {
+function performConvert(action, dataset) {
+  if (category !== MONEY) return performUnits(action, dataset);
+
   switch (action) {
     // A lone zero is an amount waiting to be replaced.
     case 'digit':
@@ -1064,11 +1076,174 @@ function performRates(action, dataset) {
   }
 }
 
+function performUnits(action, dataset) {
+  switch (action) {
+    case 'digit':
+      editUnitAmount((raw) => (raw === '0' ? dataset.digit : raw + dataset.digit));
+      break;
+    case 'decimal':
+      editUnitAmount((raw) => (raw.includes('.') ? raw : `${raw || '0'}.`));
+      break;
+    case 'backspace':
+    case 'clearOrBack':
+      editUnitAmount((raw) => raw.slice(0, -1));
+      break;
+    case 'clearAll':
+      editUnitAmount(() => '');
+      break;
+    case 'negateUnit':
+      editUnitAmount((raw) => (raw.startsWith('-') ? raw.slice(1) : `-${raw}`));
+      break;
+    default:
+      // Refreshing means nothing to a constant.
+  }
+}
+
 /** Amounts are capped where the display stops being able to say them. */
 function editAmount(rewrite) {
   const raw = rewrite(amount);
   if (/^\d*\.?\d{0,2}$/.test(raw) && (raw === '' || Number(raw) <= 1e12)) amount = raw;
   renderRates();
+}
+
+/* --------------------------------------------------------------- convert */
+
+/* Money is one category of converting rather than a screen of its own: the
+   rates list was already "type a number, pick what it is, read it as
+   everything else", which is exactly what a unit converter does. The only
+   thing money does not share is a date line and a refresh key, because it is
+   the one category that comes off a network. */
+
+const CONVERT_KEY = 'calcutron.convert';
+const MONEY = 'money';
+const TABS = [{ key: MONEY, label: 'Money' },
+  ...CATEGORIES.map(({ key, label }) => ({ key, label }))];
+
+let category = MONEY;
+let variant = null;
+let unitCode = null;
+let unitAmount = '';
+
+function loadConvert() {
+  let wanted = MONEY;
+  let wantedVariant = null;
+  try {
+    const saved = JSON.parse(readStored(CONVERT_KEY, 'null'));
+    if (saved && typeof saved.category === 'string') wanted = saved.category;
+    if (saved && typeof saved.variant === 'string') wantedVariant = saved.variant;
+  } catch {
+    // Whatever was there is not worth a broken screen.
+  }
+  setCategory(TABS.some((tab) => tab.key === wanted) ? wanted : MONEY, wantedVariant, false);
+}
+
+function setCategory(next, wantedVariant = null, redraw = true) {
+  category = next;
+
+  if (category === MONEY) {
+    variant = null;
+    unitCode = null;
+  } else {
+    const spec = categoryOf(category);
+    const allowed = spec.variants?.some((entry) => entry.key === wantedVariant);
+    variant = allowed ? wantedVariant : defaultVariant(spec);
+    // The number survives the switch; the unit it is in cannot, so each
+    // category opens on the one people reach for.
+    unitCode = spec.start;
+  }
+
+  applyPadAction();
+  store(CONVERT_KEY, JSON.stringify({ category, variant }));
+  if (redraw) renderConvert();
+}
+
+function renderConvert() {
+  renderTabs();
+  if (category === MONEY) renderRates();
+  else renderUnits();
+}
+
+function renderTabs() {
+  renderChips(convertCatsEl, TABS, category, 'cat');
+
+  const spec = category === MONEY ? null : categoryOf(category);
+  const variants = spec?.variants ?? null;
+  convertVariantEl.hidden = !variants;
+  if (variants) renderChips(convertVariantEl, variants, variant, 'variant');
+}
+
+/** Chips are rewritten rather than rebuilt, the same as the rows below. */
+function renderChips(host, items, current, kind) {
+  const signature = items.map((item) => item.key).join(',');
+  if (host.dataset.keys !== signature) {
+    host.replaceChildren();
+    for (const item of items) {
+      const chip = document.createElement('button');
+      chip.className = 'cat';
+      chip.type = 'button';
+      chip.dataset[kind] = item.key;
+      chip.textContent = item.label;
+      host.append(chip);
+    }
+    host.dataset.keys = signature;
+  }
+
+  for (const chip of host.children) {
+    chip.setAttribute('aria-pressed', String(chip.dataset[kind] === current));
+  }
+}
+
+function renderUnits() {
+  const spec = categoryOf(category);
+  const units = unitsOf(spec, variant);
+  const from = unitOf(spec, variant, unitCode) ?? units[0];
+  const value = Number(unitAmount === '' ? '0' : unitAmount) || 0;
+
+  const codes = units.map((unit) => unit.code);
+  if (rowKey(codes) !== ratesListEl.dataset.codes) {
+    buildRateRows(units.map(({ code, name }) => ({ code, name })));
+    ratesListEl.dataset.codes = rowKey(codes);
+  }
+
+  for (const unit of units) {
+    const row = rateRows.get(unit.code);
+    if (!row) continue;
+    const isBase = unit.code === from.code;
+    row.value.textContent = isBase
+      ? formatUnitEntry(unitAmount)
+      : formatValue(convertUnit(value, from, unit), unit);
+    row.button.classList.toggle('rate--base', isBase);
+    row.button.setAttribute('aria-current', String(isBase));
+    row.button.setAttribute('aria-label', isBase
+      ? `${unit.name}, the figure you are converting: ${row.value.textContent}`
+      : `${unit.name}: ${row.value.textContent}`);
+  }
+
+  // Shoe sizes are a guide, not a measurement, and the screen says so.
+  ratesSourceEl.dataset.state = spec.caveat ? 'note' : 'none';
+  ratesSourceEl.textContent = spec.caveat ?? '';
+  ratesSourceEl.hidden = !spec.caveat;
+}
+
+function editUnitAmount(rewrite) {
+  const raw = rewrite(unitAmount);
+  if (acceptsUnit(raw) && (raw === '' || raw === '-' || Math.abs(Number(raw)) <= 1e12)) {
+    unitAmount = raw;
+  }
+  renderUnits();
+}
+
+/** Carry the measurement into the unit that was tapped, not the number. */
+function rebaseUnit(code) {
+  const spec = categoryOf(category);
+  const from = unitOf(spec, variant, unitCode);
+  const to = unitOf(spec, variant, code);
+  if (!to || !from || to.code === from.code) return;
+
+  const carried = convertUnit(Number(unitAmount === '' ? '0' : unitAmount) || 0, from, to);
+  if (carried !== null) unitAmount = formatValue(carried, to);
+  unitCode = code;
+  renderUnits();
 }
 
 /* A press paints the row, and nothing more.
@@ -1098,7 +1273,41 @@ ratesListEl.addEventListener('click', (event) => {
 
   play('fn');
   tap();
-  rebase(button.dataset.code);
+  if (category === MONEY) rebase(button.dataset.code);
+  else rebaseUnit(button.dataset.code);
+});
+
+/* The chips follow the rows: pointerdown paints the press, click makes the
+   choice. The row is horizontally scrollable, so the same reasoning applies —
+   a drag along it must not pick whatever is under the finger. */
+for (const host of [convertCatsEl, convertVariantEl]) {
+  host.addEventListener('pointerdown', (event) => {
+    if (event.button > 0) return;
+    const chip = event.target.closest('.cat');
+    if (!chip) return;
+    chip.classList.add('is-pressed');
+    pressedKeys.set(event.pointerId, chip);
+    warmUp();
+  }, { passive: true });
+}
+
+convertCatsEl.addEventListener('click', (event) => {
+  const chip = event.target.closest('.cat');
+  if (!chip || chip.dataset.cat === category) return;
+  play('fn');
+  tap();
+  setCategory(chip.dataset.cat);
+  if (category === MONEY) refreshRates();
+});
+
+convertVariantEl.addEventListener('click', (event) => {
+  const chip = event.target.closest('.cat');
+  if (!chip || chip.dataset.variant === variant) return;
+  play('fn');
+  tap();
+  variant = chip.dataset.variant;
+  store(CONVERT_KEY, JSON.stringify({ category, variant }));
+  renderConvert();
 });
 
 /** Make `code` the currency everything else is quoted against. */
@@ -1179,13 +1388,32 @@ growthFieldsEl.addEventListener('pointerdown', (event) => {
   focusField(button.dataset.field);
 }, { passive: true });
 
-const MODES = ['calc', 'growth', 'rates'];
+const MODES = ['calc', 'growth', 'convert'];
 
 /* The shared pad's action key belongs to whichever screen is using it. */
 const PAD_ACTION = {
   growth: { action: 'nextField', label: 'Next', description: 'Next field' },
-  rates: { action: 'refreshRates', label: '\u21bb', description: 'Fetch today\u2019s rates' },
+  money: { action: 'refreshRates', label: '\u21bb', description: 'Fetch today\u2019s rates' },
+  /* Units have nothing to fetch, so the key earns its place another way: a
+     minus sign, which temperature genuinely needs and money never does. */
+  units: { action: 'negateUnit', label: '\u00b1', description: 'Make it negative' },
 };
+
+function padActionFor() {
+  if (mode === 'growth') return PAD_ACTION.growth;
+  if (mode !== 'convert') return null;
+  return category === MONEY ? PAD_ACTION.money : PAD_ACTION.units;
+}
+
+function applyPadAction() {
+  const pad = padActionFor();
+  if (!pad) return;
+  padAction.dataset.action = pad.action;
+  padAction.textContent = pad.label;
+  padAction.setAttribute('aria-label', pad.description);
+  // The index is looked up once, so it has to be told when a key changes job.
+  growthByAction.set(pad.action, padAction);
+}
 
 function setMode(next) {
   mode = MODES.includes(next) ? next : 'calc';
@@ -1195,18 +1423,11 @@ function setMode(next) {
     button.setAttribute('aria-pressed', String(button.dataset.mode === mode));
   }
 
-  const pad = PAD_ACTION[mode];
-  if (pad) {
-    padAction.dataset.action = pad.action;
-    padAction.textContent = pad.label;
-    padAction.setAttribute('aria-label', pad.description);
-    // The index is looked up once, so it has to be told when a key changes job.
-    growthByAction.set(pad.action, padAction);
-  }
+  applyPadAction();
 
   store(MODE_KEY, mode);
   if (mode === 'growth') renderGrowth();
-  else if (mode === 'rates') { renderRates(); refreshRates(); }
+  else if (mode === 'convert') { renderConvert(); if (category === MONEY) refreshRates(); }
   else render();
 }
 
@@ -1221,16 +1442,18 @@ modesEl.addEventListener('click', (event) => {
 
 /* Rates go off overnight, so coming back to the app is a reason to look. */
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && mode === 'rates') refreshRates();
+  if (!document.hidden && mode === 'convert' && category === MONEY) refreshRates();
 });
 
 loadGrowth();
 buildFields();
 renderGrowth();
 loadRates();
+loadConvert();
 
 renderSoundToggle();
 setChip(STATUS.IDLE);
 renderHistory();
 render();
-setMode(readStored(MODE_KEY, 'calc'));
+const storedMode = readStored(MODE_KEY, 'calc');
+setMode(storedMode === 'rates' ? 'convert' : storedMode);
