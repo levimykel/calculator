@@ -133,3 +133,63 @@ test('the amount being typed is shown as typed', () => {
   assert.equal(formatEntry('', 'EUR'), '€0', 'an emptied amount is nothing, not blank');
   assert.equal(formatEntry('50', 'CHF'), 'CHF\u202f50');
 });
+
+/* ------------------------------------------- a real fallback response */
+
+/**
+ * Trimmed from an actual reply from open.er-api.com on 2026-11-06, the first
+ * one this project has ever seen: the sandbox cannot reach the host, so until
+ * Levi fetched it by hand the fallback had been written, shipped and never
+ * once exercised against the real thing.
+ *
+ * Kept verbatim in shape — the odd fields and all — because what is being
+ * tested is that the reader copes with what the service actually sends, not
+ * with what we imagined it would.
+ */
+const LIVE_FALLBACK = {
+  result: 'success',
+  provider: 'https://www.exchangerate-api.com',
+  documentation: 'https://www.exchangerate-api.com/docs/free',
+  terms_of_use: 'https://www.exchangerate-api.com/terms',
+  time_last_update_unix: 1793923351,
+  time_last_update_utc: 'Fri, 06 Nov 2026 00:02:31 +0000',
+  time_next_update_unix: 1794010141,
+  time_next_update_utc: 'Sat, 07 Nov 2026 00:09:01 +0000',
+  time_eol_unix: 0,
+  base_code: 'USD',
+  rates: {
+    USD: 1, AED: 3.6725, AUD: 1.437598, BRL: 5.468173, CAD: 1.399114,
+    CHF: 0.816184, CNH: 6.666088, CNY: 6.682525, EUR: 0.89048, GBP: 0.742915,
+    HKD: 7.842769, INR: 94.537031, JPY: 157.835475, KRW: 1347.694961,
+    NZD: 1.783506, SEK: 9.796399, SGD: 1.277583, ZAR: 16.455799,
+  },
+};
+
+test('the fallback service, read from a real reply', () => {
+  const read = fromOpenExchange(LIVE_FALLBACK);
+  assert.ok(read, 'the parser refused a genuine response');
+  assert.equal(read.base, 'USD');
+  assert.equal(read.date, '2026-11-06', 'the date comes off the unix stamp');
+  assert.equal(read.rates.EUR, 0.89048);
+  assert.equal(read.rates.JPY, 157.835475);
+});
+
+test('every rate in that reply survives the check', () => {
+  // The reader drops anything it does not believe, so a count that came up
+  // short would mean a real response is being quietly thinned.
+  const read = fromOpenExchange(LIVE_FALLBACK);
+  assert.equal(Object.keys(read.rates).length, Object.keys(LIVE_FALLBACK.rates).length);
+});
+
+test('the fallback and the ECB source agree about the world', () => {
+  // Different providers, different days, but a pound is not suddenly a dollar.
+  // Catches a reader that mixed up which way round a rate is quoted.
+  const read = fromOpenExchange(LIVE_FALLBACK);
+  assert.ok(read.rates.EUR > 0.5 && read.rates.EUR < 1.5, 'euro per dollar');
+  assert.ok(read.rates.GBP > 0.5 && read.rates.GBP < 1.5, 'pound per dollar');
+  assert.ok(read.rates.JPY > 50 && read.rates.JPY < 500, 'yen per dollar');
+});
+
+test('a reply that says it failed is not read as rates', () => {
+  assert.equal(fromOpenExchange({ ...LIVE_FALLBACK, result: 'error' }), null);
+});
