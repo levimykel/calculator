@@ -727,6 +727,10 @@ body {
 
 .cats::-webkit-scrollbar { display: none; }
 
+/* `display: flex` above outranks the UA rule for [hidden], so restate it —
+   the same reason .fxpad and .history__toggle each do. */
+.cats[hidden] { display: none; }
+
 .cat {
   -webkit-appearance: none;
   appearance: none;
@@ -799,7 +803,8 @@ body {
 .rate.is-pressed { background: var(--key-fn-press); transition-duration: 0s; }
 
 .rate__code {
-  flex: 0 0 3.2em;
+  /* Wide enough for "ft in", the longest code either list carries. */
+  flex: 0 0 4em;
   font-size: 0.86rem;
   font-weight: 700;
   letter-spacing: 0.3px;

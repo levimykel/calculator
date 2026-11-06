@@ -50,7 +50,7 @@ render it.
 ## Running and testing
 
 ```sh
-npm test            # node --test 'test/*.test.js' — 195 tests, under a second
+npm test            # node --test 'test/*.test.js' — 204 tests, under a second
 npm start           # serves the folder on :8080
 npm run bundle      # assemble www/ — only the files that ship — for the shell
 npm run set-version 4.3.0
@@ -148,6 +148,14 @@ Each of these looked like a bug in something else at first.
 - **`margin-top: auto` pushes across the cross axis** once `.pads` becomes a
   flex row in landscape, which flattened the keypad to 22px tall. It is reset
   there deliberately.
+- **An author `display:` rule outranks the UA's `[hidden]`,** because an
+  attribute selector and a class have the same specificity and author styles
+  win. Setting `el.hidden = true` then does nothing visible. Every element in
+  here that is both styled with `display:` and hidden from script restates it —
+  `.fxpad[hidden]`, `.history__toggle[hidden]`, `.chart__cursor[hidden]`,
+  `.cats[hidden]`. This is listed here because it was fallen into a fourth
+  time, with three worked examples already in the stylesheet: a new
+  `display:`-carrying element that script hides needs its own line.
 - **The keypad height is a budget.** `--keypad-height` is shared; anything that
   appears above the keys (the fx row) has to come out of it, or the bottom row
   of keys goes off-screen.
@@ -195,6 +203,23 @@ is affine, so a factor cannot express it — and temperature is the whole point 
 the feature. The pair makes Fahrenheit ordinary instead of a special case, and
 `ratio()` keeps the boring units short. A new unit follows that shape even where
 a factor would do.
+
+**Each category holds its own figure, in its own unit.** `held` in `js/app.js`
+maps a category to `{ unit, amount }`, seeded from the category's `start` and
+`startValue` and persisted. Carrying one number between categories was the
+first version's behaviour and it was nonsense: 27 °C became shoe size 27.
+
+**A unit whose written form is not a single number carries four hooks.** Feet
+and inches is the only one so far. `parse` turns what was typed into the unit's
+number, `entry` turns it into what the row being typed into shows, `display`
+turns a converted number into what a row shows, and `raw` turns one back into
+something typeable, for when that row is tapped and becomes the entry. Ordinary
+units define none of them and fall back to plain numbers. The decimal key is
+the separator — 5 . 1 0 is five foot ten — so no new key had to appear.
+
+Length's units are ordered by what people reach for, not by system, because
+only about seven rows fit on a phone and feet-and-inches must not sit below the
+fold. The currency list does the same thing through `COMMON` in `js/rates.js`.
 
 The action key on the shared numpad does a different job per category: money can
 be refreshed, so it is `↻`; a unit cannot, so it is `±`, which temperature
